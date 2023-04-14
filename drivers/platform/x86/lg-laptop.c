@@ -270,8 +270,9 @@ static void wmi_input_setup(void)
 	}
 }
 
-static void acpi_notify(struct acpi_device *device, u32 event)
+static void acpi_notify(acpi_handle handle, u32 event, void *data)
 {
+	struct acpi_device *device = data;
 	struct key_entry *key;
 
 	acpi_handle_debug(device->handle, "notify: %d\n", event);
@@ -752,7 +753,11 @@ static int acpi_add(struct acpi_device *device)
 	wmi_input_setup();
 	battery_hook_register(&battery_hook);
 
-	return 0;
+	ret = acpi_device_install_notify_handler(device, ACPI_DEVICE_NOTIFY, acpi_notify);
+	if (ret)
+		goto out_platform_device;
+
+	return ret;
 
 out_platform_device:
 	platform_device_unregister(pf_device);
@@ -773,6 +778,7 @@ static void acpi_remove(struct acpi_device *device)
 	platform_device_unregister(pf_device);
 	pf_device = NULL;
 	platform_driver_unregister(&pf_driver);
+	acpi_device_remove_notify_handler(device, ACPI_DEVICE_NOTIFY, acpi_notify);
 }
 
 static const struct acpi_device_id device_ids[] = {
@@ -788,7 +794,6 @@ static struct acpi_driver acpi_driver = {
 	.ops = {
 		.add = acpi_add,
 		.remove = acpi_remove,
-		.notify = acpi_notify,
 		},
 	.owner = THIS_MODULE,
 };

@@ -839,7 +839,12 @@ static int acpi_fujitsu_laptop_add(struct acpi_device *device)
 	if (ret)
 		goto err_free_fifo;
 
-	return 0;
+	ret = acpi_device_install_notify_handler(device, ACPI_DEVICE_NOTIFY,
+						 acpi_fujitsu_laptop_notify);
+	if (ret)
+		goto err_free_fifo;
+
+	return ret;
 
 err_free_fifo:
 	kfifo_free(&priv->fifo);
@@ -854,6 +859,7 @@ static void acpi_fujitsu_laptop_remove(struct acpi_device *device)
 	fujitsu_laptop_platform_remove(device);
 
 	kfifo_free(&priv->fifo);
+	acpi_device_remove_notify_handler(device, ACPI_DEVICE_NOTIFY, acpi_fujitsu_laptop_notify);
 }
 
 static void acpi_fujitsu_laptop_press(struct acpi_device *device, int scancode)
@@ -889,12 +895,15 @@ static void acpi_fujitsu_laptop_release(struct acpi_device *device)
 	}
 }
 
-static void acpi_fujitsu_laptop_notify(struct acpi_device *device, u32 event)
+static void acpi_fujitsu_laptop_notify(acpi_handle handle, u32 event, void *data)
 {
-	struct fujitsu_laptop *priv = acpi_driver_data(device);
+	struct acpi_device *device = data;
+	struct fujitsu_laptop *priv;
 	unsigned long flags;
 	int scancode, i = 0;
 	unsigned int irb;
+
+	priv = acpi_driver_data(device);
 
 	if (event != ACPI_FUJITSU_NOTIFY_CODE) {
 		acpi_handle_info(device->handle, "Unsupported event [0x%x]\n",
@@ -963,7 +972,6 @@ static struct acpi_driver acpi_fujitsu_laptop_driver = {
 	.ops = {
 		.add = acpi_fujitsu_laptop_add,
 		.remove = acpi_fujitsu_laptop_remove,
-		.notify = acpi_fujitsu_laptop_notify,
 		},
 };
 

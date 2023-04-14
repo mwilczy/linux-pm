@@ -535,7 +535,7 @@ static void acpi_notify_device_fixed(void *data)
 	struct acpi_device *device = data;
 
 	/* Fixed hardware devices have no handles */
-	acpi_notify_device(NULL, ACPI_FIXED_HARDWARE_EVENT, device);
+	device->fixed_event_notify(NULL, ACPI_FIXED_HARDWARE_EVENT, device);
 }
 
 static u32 acpi_device_fixed_event(void *data)
@@ -550,11 +550,13 @@ static int acpi_device_install_notify_handler(struct acpi_device *device,
 	acpi_status status;
 
 	if (device->device_type == ACPI_BUS_TYPE_POWER_BUTTON) {
+		device->fixed_event_notify = acpi_notify_device;
 		status =
 		    acpi_install_fixed_event_handler(ACPI_EVENT_POWER_BUTTON,
 						     acpi_device_fixed_event,
 						     device);
 	} else if (device->device_type == ACPI_BUS_TYPE_SLEEP_BUTTON) {
+		device->fixed_event_notify = acpi_notify_device;
 		status =
 		    acpi_install_fixed_event_handler(ACPI_EVENT_SLEEP_BUTTON,
 						     acpi_device_fixed_event,
@@ -579,9 +581,11 @@ static void acpi_device_remove_notify_handler(struct acpi_device *device,
 	if (device->device_type == ACPI_BUS_TYPE_POWER_BUTTON) {
 		acpi_remove_fixed_event_handler(ACPI_EVENT_POWER_BUTTON,
 						acpi_device_fixed_event);
+		device->fixed_event_notify = NULL;
 	} else if (device->device_type == ACPI_BUS_TYPE_SLEEP_BUTTON) {
 		acpi_remove_fixed_event_handler(ACPI_EVENT_SLEEP_BUTTON,
 						acpi_device_fixed_event);
+		device->fixed_event_notify = NULL;
 	} else {
 		u32 type = acpi_drv->flags & ACPI_DRIVER_ALL_NOTIFY_EVENTS ?
 				ACPI_ALL_NOTIFY : ACPI_DEVICE_NOTIFY;
@@ -591,6 +595,56 @@ static void acpi_device_remove_notify_handler(struct acpi_device *device,
 	}
 	acpi_os_wait_events_complete();
 }
+
+int acpi_device_install_event_handler(struct acpi_device *device,
+				      u32 type,
+				      void (*notify)(acpi_handle, u32, void*))
+{
+	acpi_status status;
+
+	if (device->device_type == ACPI_BUS_TYPE_POWER_BUTTON) {
+		device->fixed_event_notify = notify;
+		status =
+		    acpi_install_fixed_event_handler(ACPI_EVENT_POWER_BUTTON,
+						     acpi_device_fixed_event,
+						     device);
+	} else if (device->device_type == ACPI_BUS_TYPE_SLEEP_BUTTON) {
+		device->fixed_event_notify = notify;
+		status =
+		    acpi_install_fixed_event_handler(ACPI_EVENT_SLEEP_BUTTON,
+						     acpi_device_fixed_event,
+						     device);
+	} else {
+		status = acpi_install_notify_handler(device->handle, type,
+						     notify,
+						     device);
+	}
+
+	if (ACPI_FAILURE(status))
+		return -EINVAL;
+	return 0;
+}
+EXPORT_SYMBOL(acpi_device_install_event_handler);
+
+void acpi_device_remove_event_handler(struct acpi_device *device,
+				      u32 type,
+				      void (*notify)(acpi_handle, u32, void*))
+{
+	if (device->device_type == ACPI_BUS_TYPE_POWER_BUTTON) {
+		acpi_remove_fixed_event_handler(ACPI_EVENT_POWER_BUTTON,
+						acpi_device_fixed_event);
+		device->fixed_event_notify = NULL;
+	} else if (device->device_type == ACPI_BUS_TYPE_SLEEP_BUTTON) {
+		acpi_remove_fixed_event_handler(ACPI_EVENT_SLEEP_BUTTON,
+						acpi_device_fixed_event);
+		device->fixed_event_notify = NULL;
+	} else {
+		acpi_remove_notify_handler(device->handle, type,
+					   notify);
+	}
+	acpi_os_wait_events_complete();
+}
+EXPORT_SYMBOL(acpi_device_remove_event_handler);
 
 /* Handle events targeting \_SB device (at present only graceful shutdown) */
 

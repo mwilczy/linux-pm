@@ -510,13 +510,12 @@ static void acpi_processor_remove(struct acpi_device *device)
 
 #ifdef CONFIG_X86
 static bool acpi_hwp_native_thermal_lvt_set;
-static acpi_status __init acpi_hwp_native_thermal_lvt_osc(acpi_handle handle,
-							  u32 lvl,
-							  void *context,
-							  void **rv)
+static acpi_status __init acpi_processor_osc(acpi_handle handle, u32 lvl,
+					     void *context, void **rv)
 {
 	u8 sb_uuid_str[] = "4077A616-290C-47BE-9EBD-D87058713953";
-	u32 capbuf[2];
+	u32 capbuf[2] = { 0 };
+	acpi_status status;
 	struct acpi_osc_context osc_context = {
 		.uuid_str = sb_uuid_str,
 		.rev = 1,
@@ -524,39 +523,44 @@ static acpi_status __init acpi_hwp_native_thermal_lvt_osc(acpi_handle handle,
 		.cap.pointer = capbuf,
 	};
 
-	if (acpi_hwp_native_thermal_lvt_set)
-		return AE_CTRL_TERMINATE;
+	capbuf[OSC_QUERY_DWORD] = 0x0000;
+	arch_acpi_set_proc_cap_bits(&capbuf[OSC_SUPPORT_DWORD]);
 
-	capbuf[0] = 0x0000;
-	capbuf[1] = 0x1000; /* set bit 12 */
+	if (boot_option_idle_override == IDLE_NOMWAIT)
+		capbuf[OSC_SUPPORT_DWORD] &= ~(ACPI_PDC_C_C2C3_FFH | ACPI_PDC_C_C1_FFH);
 
-	if (ACPI_SUCCESS(acpi_run_osc(handle, &osc_context))) {
+	status = acpi_run_osc(handle, &osc_context);
+	if (ACPI_SUCCESS(status)) {
 		if (osc_context.ret.pointer && osc_context.ret.length > 1) {
 			u32 *capbuf_ret = osc_context.ret.pointer;
 
-			if (capbuf_ret[1] & 0x1000) {
+			if (!acpi_hwp_native_thermal_lvt_set &&
+			    capbuf_ret[1] & 0x1000) {
 				acpi_handle_info(handle,
-					"_OSC native thermal LVT Acked\n");
+						 "_OSC native thermal LVT Acked\n");
 				acpi_hwp_native_thermal_lvt_set = true;
 			}
 		}
 		kfree(osc_context.ret.pointer);
 	}
 
-	return AE_OK;
+	return status;
 }
 
-void __init acpi_early_processor_osc(void)
+acpi_status __init acpi_early_processor_osc(void)
 {
-	if (boot_cpu_has(X86_FEATURE_HWP)) {
-		acpi_walk_namespace(ACPI_TYPE_PROCESSOR, ACPI_ROOT_OBJECT,
-				    ACPI_UINT32_MAX,
-				    acpi_hwp_native_thermal_lvt_osc,
-				    NULL, NULL, NULL);
-		acpi_get_devices(ACPI_PROCESSOR_DEVICE_HID,
-				 acpi_hwp_native_thermal_lvt_osc,
-				 NULL, NULL);
-	}
+	acpi_status status;
+
+	status = acpi_walk_namespace(ACPI_TYPE_PROCESSOR, ACPI_ROOT_OBJECT,
+				     ACPI_UINT32_MAX, acpi_processor_osc, NULL,
+				     NULL, NULL);
+	if (ACPI_FAILURE(status))
+		return status;
+
+	status = acpi_get_devices(ACPI_PROCESSOR_DEVICE_HID, acpi_processor_osc,
+				  NULL, NULL);
+
+	return status;
 }
 #endif
 

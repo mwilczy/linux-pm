@@ -156,9 +156,9 @@ static inline void acpi_early_processor_set_pdc(void) {}
 #endif
 
 #ifdef CONFIG_X86
-void acpi_early_processor_osc(void);
+acpi_status acpi_early_processor_osc(void);
 #else
-static inline void acpi_early_processor_osc(void) {}
+static inline acpi_status acpi_early_processor_osc(void) { return AE_ERROR; }
 #endif
 
 /* --------------------------------------------------------------------------

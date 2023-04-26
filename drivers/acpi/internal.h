@@ -155,6 +155,9 @@ void acpi_early_processor_set_pdc(void);
 static inline void acpi_early_processor_set_pdc(void) {}
 #endif
 
+void processor_dmi_check(void);
+bool processor_physically_present(acpi_handle handle);
+
 #ifdef CONFIG_X86
 acpi_status acpi_early_processor_osc(void);
 #else

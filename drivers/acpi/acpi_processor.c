@@ -10,6 +10,7 @@
  *                     Rafael J. Wysocki <rafael.j.wysocki@intel.com>
  */
 
+#include <linux/dmi.h>
 #include <linux/acpi.h>
 #include <linux/device.h>
 #include <linux/kernel.h>
@@ -20,6 +21,8 @@
 #include <acpi/processor.h>
 
 #include <asm/cpu.h>
+
+#include <xen/xen.h>
 
 #include "internal.h"
 
@@ -508,7 +511,79 @@ static void acpi_processor_remove(struct acpi_device *device)
 }
 #endif /* CONFIG_ACPI_HOTPLUG_CPU */
 
-#ifdef CONFIG_X86
+bool __init processor_physically_present(acpi_handle handle)
+{
+	int cpuid, type;
+	u32 acpi_id;
+	acpi_status status;
+	acpi_object_type acpi_type;
+	unsigned long long tmp;
+	union acpi_object object = { 0 };
+	struct acpi_buffer buffer = { sizeof(union acpi_object), &object };
+
+	status = acpi_get_type(handle, &acpi_type);
+	if (ACPI_FAILURE(status))
+		return false;
+
+	switch (acpi_type) {
+	case ACPI_TYPE_PROCESSOR:
+		status = acpi_evaluate_object(handle, NULL, NULL, &buffer);
+		if (ACPI_FAILURE(status))
+			return false;
+		acpi_id = object.processor.proc_id;
+		break;
+	case ACPI_TYPE_DEVICE:
+		status = acpi_evaluate_integer(handle, "_UID", NULL, &tmp);
+		if (ACPI_FAILURE(status))
+			return false;
+		acpi_id = tmp;
+		break;
+	default:
+		return false;
+	}
+
+	if (xen_initial_domain())
+		/*
+		 * When running as a Xen dom0 the number of processors Linux
+		 * sees can be different from the real number of processors on
+		 * the system, and we still need to execute _PDC for all of
+		 * them.
+		 */
+		return xen_processor_present(acpi_id);
+
+	type = (acpi_type == ACPI_TYPE_DEVICE) ? 1 : 0;
+	cpuid = acpi_get_cpuid(handle, type, acpi_id);
+
+	return !invalid_logical_cpuid(cpuid);
+}
+
+static int __init set_no_mwait(const struct dmi_system_id *id)
+{
+	pr_notice("%s detected - disabling mwait for CPU C-states\n",
+		  id->ident);
+	boot_option_idle_override = IDLE_NOMWAIT;
+	return 0;
+}
+
+static const struct dmi_system_id processor_idle_dmi_table[] __initconst = {
+	{
+	set_no_mwait, "Extensa 5220", {
+	DMI_MATCH(DMI_BIOS_VENDOR, "Phoenix Technologies LTD"),
+	DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+	DMI_MATCH(DMI_PRODUCT_VERSION, "0100"),
+	DMI_MATCH(DMI_BOARD_NAME, "Columbia") }, NULL},
+	{},
+};
+
+void __init processor_dmi_check(void)
+{
+	/*
+	 * Check whether the system is DMI table. If yes, OSPM
+	 * should not use mwait for CPU-states.
+	 */
+	dmi_check_system(processor_idle_dmi_table);
+}
+
 static bool acpi_hwp_native_thermal_lvt_set;
 static acpi_status __init acpi_processor_osc(acpi_handle handle, u32 lvl,
 					     void *context, void **rv)
@@ -523,7 +598,9 @@ static acpi_status __init acpi_processor_osc(acpi_handle handle, u32 lvl,
 		.cap.pointer = capbuf,
 	};
 
-	capbuf[OSC_QUERY_DWORD] = 0x0000;
+	if (processor_physically_present(handle) == false)
+		return AE_OK;
+
 	arch_acpi_set_proc_cap_bits(&capbuf[OSC_SUPPORT_DWORD]);
 
 	if (boot_option_idle_override == IDLE_NOMWAIT)
@@ -551,6 +628,8 @@ acpi_status __init acpi_early_processor_osc(void)
 {
 	acpi_status status;
 
+	processor_dmi_check();
+
 	status = acpi_walk_namespace(ACPI_TYPE_PROCESSOR, ACPI_ROOT_OBJECT,
 				     ACPI_UINT32_MAX, acpi_processor_osc, NULL,
 				     NULL, NULL);
@@ -562,7 +641,6 @@ acpi_status __init acpi_early_processor_osc(void)
 
 	return status;
 }
-#endif
 
 /*
  * The following ACPI IDs are known to be suitable for representing as

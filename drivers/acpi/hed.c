@@ -42,7 +42,7 @@ EXPORT_SYMBOL_GPL(unregister_acpi_hed_notifier);
  * it is used by HEST Generic Hardware Error Source with notify type
  * SCI.
  */
-static void acpi_hed_notify(struct acpi_device *device, u32 event)
+static void acpi_hed_notify(acpi_handle handle, u32 event, void *data)
 {
 	blocking_notifier_call_chain(&acpi_hed_notify_list, 0, NULL);
 }
@@ -53,12 +53,13 @@ static int acpi_hed_add(struct acpi_device *device)
 	if (hed_handle)
 		return -EINVAL;
 	hed_handle = device->handle;
-	return 0;
+	return acpi_device_install_notify_handler(device, ACPI_DEVICE_NOTIFY, acpi_hed_notify);
 }
 
 static void acpi_hed_remove(struct acpi_device *device)
 {
 	hed_handle = NULL;
+	acpi_device_remove_notify_handler(device, ACPI_DEVICE_NOTIFY, acpi_hed_notify);
 }
 
 static struct acpi_driver acpi_hed_driver = {
@@ -68,7 +69,6 @@ static struct acpi_driver acpi_hed_driver = {
 	.ops = {
 		.add = acpi_hed_add,
 		.remove = acpi_hed_remove,
-		.notify = acpi_hed_notify,
 	},
 };
 module_acpi_driver(acpi_hed_driver);

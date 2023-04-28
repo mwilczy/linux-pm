@@ -3234,6 +3234,7 @@ static void toshiba_acpi_remove(struct acpi_device *acpi_dev)
 		toshiba_acpi = NULL;
 
 	kfree(dev);
+	acpi_device_remove_notify_handler(acpi_dev, ACPI_ALL_NOTIFY, toshiba_acpi_notify);
 }
 
 static const char *find_hci_method(acpi_handle handle)
@@ -3473,16 +3474,23 @@ iio_error:
 	if (dev->battery_charge_mode_supported)
 		battery_hook_register(&battery_hook);
 
-	return 0;
+	ret = acpi_device_install_notify_handler(acpi_dev, ACPI_ALL_NOTIFY, toshiba_acpi_notify);
+	if (ret)
+		goto error;
+
+	return ret;
 
 error:
 	toshiba_acpi_remove(acpi_dev);
 	return ret;
 }
 
-static void toshiba_acpi_notify(struct acpi_device *acpi_dev, u32 event)
+static void toshiba_acpi_notify(acpi_handle handle, u32 event, void *data)
 {
-	struct toshiba_acpi_dev *dev = acpi_driver_data(acpi_dev);
+	struct acpi_device *acpi_dev = data;
+	struct toshiba_acpi_dev *dev;
+
+	dev = acpi_driver_data(acpi_dev);
 
 	switch (event) {
 	case 0x80: /* Hotkeys and some system events */
@@ -3583,11 +3591,9 @@ static struct acpi_driver toshiba_acpi_driver = {
 	.name	= "Toshiba ACPI driver",
 	.owner	= THIS_MODULE,
 	.ids	= toshiba_device_ids,
-	.flags	= ACPI_DRIVER_ALL_NOTIFY_EVENTS,
 	.ops	= {
 		.add		= toshiba_acpi_add,
 		.remove		= toshiba_acpi_remove,
-		.notify		= toshiba_acpi_notify,
 	},
 	.drv.pm	= &toshiba_acpi_pm,
 };

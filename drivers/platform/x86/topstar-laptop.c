@@ -232,11 +232,14 @@ static int topstar_acpi_fncx_switch(struct acpi_device *device, bool state)
 	return 0;
 }
 
-static void topstar_acpi_notify(struct acpi_device *device, u32 event)
+static void topstar_acpi_notify(acpi_handle handle, u32 event, void *data)
 {
-	struct topstar_laptop *topstar = acpi_driver_data(device);
+	struct acpi_device *device = data;
+	struct topstar_laptop *topstar;
 	static bool dup_evnt[2];
 	bool *dup;
+
+	topstar = acpi_driver_data(device);
 
 	/* 0x83 and 0x84 key events comes duplicated... */
 	if (event == 0x83 || event == 0x84) {
@@ -319,6 +322,10 @@ static int topstar_acpi_add(struct acpi_device *device)
 			goto err_input_exit;
 	}
 
+	err = acpi_device_install_event_handler(device, ACPI_DEVICE_NOTIFY, topstar_acpi_notify);
+	if (err)
+		goto err_input_exit;
+
 	return 0;
 
 err_input_exit:
@@ -335,6 +342,8 @@ err_free:
 static void topstar_acpi_remove(struct acpi_device *device)
 {
 	struct topstar_laptop *topstar = acpi_driver_data(device);
+
+	acpi_device_remove_event_handler(device, ACPI_DEVICE_NOTIFY, topstar_acpi_notify);
 
 	if (led_workaround)
 		topstar_led_exit(topstar);
@@ -360,7 +369,6 @@ static struct acpi_driver topstar_acpi_driver = {
 	.ops = {
 		.add = topstar_acpi_add,
 		.remove = topstar_acpi_remove,
-		.notify = topstar_acpi_notify,
 	},
 };
 

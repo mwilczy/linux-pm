@@ -21,6 +21,21 @@ struct vmgenid_state {
 	u8 this_id[VMGENID_SIZE];
 };
 
+static void vmgenid_notify(acpi_handle handle, u32 event, void *data)
+{
+	struct acpi_device *device = data;
+	struct vmgenid_state *state;
+	u8 old_id[VMGENID_SIZE];
+
+	state = acpi_driver_data(device);
+
+	memcpy(old_id, state->this_id, sizeof(old_id));
+	memcpy(state->this_id, state->next_id, sizeof(state->this_id));
+	if (!memcmp(old_id, state->this_id, sizeof(old_id)))
+		return;
+	add_vmfork_randomness(state->this_id, sizeof(state->this_id));
+}
+
 static int vmgenid_add(struct acpi_device *device)
 {
 	struct acpi_buffer parsed = { ACPI_ALLOCATE_BUFFER };
@@ -60,21 +75,16 @@ static int vmgenid_add(struct acpi_device *device)
 
 	device->driver_data = state;
 
+	ret = acpi_device_install_event_handler(device, ACPI_DEVICE_NOTIFY, vmgenid_notify);
+
 out:
 	ACPI_FREE(parsed.pointer);
 	return ret;
 }
 
-static void vmgenid_notify(struct acpi_device *device, u32 event)
+static void vmgenid_remove(struct acpi_device *device)
 {
-	struct vmgenid_state *state = acpi_driver_data(device);
-	u8 old_id[VMGENID_SIZE];
-
-	memcpy(old_id, state->this_id, sizeof(old_id));
-	memcpy(state->this_id, state->next_id, sizeof(state->this_id));
-	if (!memcmp(old_id, state->this_id, sizeof(old_id)))
-		return;
-	add_vmfork_randomness(state->this_id, sizeof(state->this_id));
+	acpi_device_remove_event_handler(device, ACPI_DEVICE_NOTIFY, vmgenid_notify);
 }
 
 static const struct acpi_device_id vmgenid_ids[] = {
@@ -89,7 +99,7 @@ static struct acpi_driver vmgenid_driver = {
 	.owner = THIS_MODULE,
 	.ops = {
 		.add = vmgenid_add,
-		.notify = vmgenid_notify
+		.remove = vmgenid_remove,
 	}
 };
 

@@ -135,7 +135,7 @@ static const struct dmi_system_id dmi_lid_quirks[] = {
 
 static int acpi_button_add(struct acpi_device *device);
 static void acpi_button_remove(struct acpi_device *device);
-static void acpi_button_notify(struct acpi_device *device, u32 event);
+static void acpi_button_notify(acpi_handle handle, u32 event, void *data);
 
 #ifdef CONFIG_PM_SLEEP
 static int acpi_button_suspend(struct device *dev);
@@ -153,7 +153,6 @@ static struct acpi_driver acpi_button_driver = {
 	.ops = {
 		.add = acpi_button_add,
 		.remove = acpi_button_remove,
-		.notify = acpi_button_notify,
 	},
 	.drv.pm = &acpi_button_pm,
 };
@@ -409,10 +408,13 @@ static void acpi_lid_initialize_state(struct acpi_device *device)
 	button->lid_state_initialized = true;
 }
 
-static void acpi_button_notify(struct acpi_device *device, u32 event)
+static void acpi_button_notify(acpi_handle handle, u32 event, void *data)
 {
-	struct acpi_button *button = acpi_driver_data(device);
+	struct acpi_device *device = data;
+	struct acpi_button *button;
 	struct input_dev *input;
+
+	button = acpi_driver_data(device);
 
 	switch (event) {
 	case ACPI_FIXED_HARDWARE_EVENT:
@@ -578,7 +580,12 @@ static int acpi_button_add(struct acpi_device *device)
 
 	device_init_wakeup(&device->dev, true);
 	pr_info("%s [%s]\n", name, acpi_device_bid(device));
-	return 0;
+
+	error =  acpi_device_install_event_handler(device, ACPI_DEVICE_NOTIFY, acpi_button_notify);
+	if (error)
+		goto err_remove_fs;
+
+	return error;
 
  err_remove_fs:
 	acpi_button_remove_fs(device);
@@ -593,6 +600,7 @@ static void acpi_button_remove(struct acpi_device *device)
 {
 	struct acpi_button *button = acpi_driver_data(device);
 
+	acpi_device_remove_event_handler(device, ACPI_DEVICE_NOTIFY, acpi_button_notify);
 	acpi_button_remove_fs(device);
 	input_unregister_device(button->input);
 	kfree(button);

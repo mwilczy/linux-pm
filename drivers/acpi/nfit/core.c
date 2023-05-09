@@ -3368,11 +3368,17 @@ static int acpi_nfit_add(struct acpi_device *adev)
 
 	if (rc)
 		return rc;
-	return devm_add_action_or_reset(dev, acpi_nfit_shutdown, acpi_desc);
+
+	rc = devm_add_action_or_reset(dev, acpi_nfit_shutdown, acpi_desc);
+	if (rc)
+		return rc;
+
+	return acpi_device_install_notify_handler(device, ACPI_DEVICE_NOTIFY, acpi_nfit_notify);
 }
 
 static void acpi_nfit_remove(struct acpi_device *adev)
 {
+	acpi_device_remove_notify_handler(device, ACPI_DEVICE_NOTIFY, acpi_nfit_notify);
 	/* see acpi_nfit_unregister */
 }
 
@@ -3446,7 +3452,7 @@ void __acpi_nfit_notify(struct device *dev, acpi_handle handle, u32 event)
 }
 EXPORT_SYMBOL_GPL(__acpi_nfit_notify);
 
-static void acpi_nfit_notify(struct acpi_device *adev, u32 event)
+static void acpi_nfit_notify(acpi_handle handle, u32 event, void *data)
 {
 	device_lock(&adev->dev);
 	__acpi_nfit_notify(&adev->dev, adev->handle, event);
@@ -3465,7 +3471,6 @@ static struct acpi_driver acpi_nfit_driver = {
 	.ops = {
 		.add = acpi_nfit_add,
 		.remove = acpi_nfit_remove,
-		.notify = acpi_nfit_notify,
 	},
 };
 

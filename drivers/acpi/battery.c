@@ -1034,10 +1034,13 @@ static void acpi_battery_refresh(struct acpi_battery *battery)
 }
 
 /* Driver Interface */
-static void acpi_battery_notify(struct acpi_device *device, u32 event)
+static void acpi_battery_notify(acpi_handle handle, u32 event, void *data)
 {
-	struct acpi_battery *battery = acpi_driver_data(device);
+	struct acpi_device *device = data;
+	struct acpi_battery *battery;
 	struct power_supply *old;
+
+	battery = acpi_driver_data(device);
 
 	if (!battery)
 		return;
@@ -1212,6 +1215,10 @@ static int acpi_battery_add(struct acpi_device *device)
 
 	device_init_wakeup(&device->dev, 1);
 
+	result  = acpi_device_install_notify_handler(device, ACPI_ALL_NOTIFY, acpi_battery_notify);
+	if (result)
+		goto fail;
+
 	return result;
 
 fail:
@@ -1235,6 +1242,7 @@ static void acpi_battery_remove(struct acpi_device *device)
 	mutex_destroy(&battery->lock);
 	mutex_destroy(&battery->sysfs_lock);
 	kfree(battery);
+	acpi_device_remove_notify_handler(device, ACPI_ALL_NOTIFY, acpi_battery_notify);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -1264,11 +1272,9 @@ static struct acpi_driver acpi_battery_driver = {
 	.name = "battery",
 	.class = ACPI_BATTERY_CLASS,
 	.ids = battery_device_ids,
-	.flags = ACPI_DRIVER_ALL_NOTIFY_EVENTS,
 	.ops = {
 		.add = acpi_battery_add,
 		.remove = acpi_battery_remove,
-		.notify = acpi_battery_notify,
 		},
 	.drv.pm = &acpi_battery_pm,
 };

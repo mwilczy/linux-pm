@@ -207,7 +207,7 @@ static void rbtn_input_event(struct rbtn_data *rbtn_data)
 
 static int rbtn_add(struct acpi_device *device);
 static void rbtn_remove(struct acpi_device *device);
-static void rbtn_notify(struct acpi_device *device, u32 event);
+static void rbtn_notify(acpi_handle handle, u32 event, void *data);
 
 static const struct acpi_device_id rbtn_ids[] = {
 	{ "DELRBTN", 0 },
@@ -293,7 +293,6 @@ static struct acpi_driver rbtn_driver = {
 	.ops = {
 		.add = rbtn_add,
 		.remove = rbtn_remove,
-		.notify = rbtn_notify,
 	},
 	.owner = THIS_MODULE,
 };
@@ -422,13 +421,18 @@ static int rbtn_add(struct acpi_device *device)
 		ret = -EINVAL;
 	}
 
-	return ret;
+	if (ret)
+		return ret;
+
+	return acpi_device_install_event_handler(device, ACPI_DEVICE_NOTIFY, rbtn_notify);
 
 }
 
 static void rbtn_remove(struct acpi_device *device)
 {
 	struct rbtn_data *rbtn_data = device->driver_data;
+
+	acpi_device_remove_event_handler(device, ACPI_DEVICE_NOTIFY, rbtn_notify);
 
 	switch (rbtn_data->type) {
 	case RBTN_TOGGLE:
@@ -445,9 +449,12 @@ static void rbtn_remove(struct acpi_device *device)
 	device->driver_data = NULL;
 }
 
-static void rbtn_notify(struct acpi_device *device, u32 event)
+static void rbtn_notify(acpi_handle handle, u32 event, void *data)
 {
-	struct rbtn_data *rbtn_data = device->driver_data;
+	struct acpi_device *device = data;
+	struct rbtn_data *rbtn_data;
+
+	rbtn_data = device->driver_data;
 
 	/*
 	 * Some BIOSes send a notification at resume.

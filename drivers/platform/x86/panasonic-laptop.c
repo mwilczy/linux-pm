@@ -833,9 +833,12 @@ static void acpi_pcc_generate_keyinput(struct pcc_acpi *pcc)
 		pr_err("Unknown hotkey event: 0x%04llx\n", result);
 }
 
-static void acpi_pcc_hotkey_notify(struct acpi_device *device, u32 event)
+static void acpi_pcc_hotkey_notify(acpi_handle handle, u32 event, void *data)
 {
-	struct pcc_acpi *pcc = acpi_driver_data(device);
+	struct acpi_device *device = data;
+	struct pcc_acpi *pcc;
+
+	pcc = acpi_driver_data(device);
 
 	switch (event) {
 	case HKEY_NOTIFY:
@@ -1049,7 +1052,13 @@ static int acpi_pcc_hotkey_add(struct acpi_device *device)
 	}
 
 	i8042_install_filter(panasonic_i8042_filter);
-	return 0;
+
+	result =  acpi_device_install_notify_handler(device, ACPI_DEVICE_NOTIFY,
+						     acpi_pcc_hotkey_notify);
+	if (result)
+		goto out_platform;
+
+	return result;
 
 out_platform:
 	platform_device_unregister(pcc->platform);
@@ -1088,6 +1097,7 @@ static void acpi_pcc_hotkey_remove(struct acpi_device *device)
 
 	kfree(pcc->sinf);
 	kfree(pcc);
+	acpi_device_remove_notify_handler(device, ACPI_DEVICE_NOTIFY, acpi_pcc_hotkey_notify);
 }
 
 module_acpi_driver(acpi_pcc_driver);

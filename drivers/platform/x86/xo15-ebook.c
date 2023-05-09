@@ -56,8 +56,9 @@ static int ebook_send_state(struct acpi_device *device)
 	return 0;
 }
 
-static void ebook_switch_notify(struct acpi_device *device, u32 event)
+static void ebook_switch_notify(acpi_handle handle, u32 event, void *data)
 {
+	struct acpi_device *device = data;
 	switch (event) {
 	case ACPI_FIXED_HARDWARE_EVENT:
 	case XO15_EBOOK_NOTIFY_STATUS:
@@ -134,7 +135,11 @@ static int ebook_switch_add(struct acpi_device *device)
 		device_set_wakeup_enable(&device->dev, true);
 	}
 
-	return 0;
+	error = acpi_device_install_notify_handler(device, ACPI_DEVICE_NOTIFY, ebook_switch_notify);
+	if (error)
+		goto err_free_input;
+
+	return error;
 
  err_free_input:
 	input_free_device(input);
@@ -149,6 +154,7 @@ static void ebook_switch_remove(struct acpi_device *device)
 
 	input_unregister_device(button->input);
 	kfree(button);
+	acpi_device_remove_notify_handler(device, ACPI_DEVICE_NOTIFY, ebook_switch_notify);
 }
 
 static struct acpi_driver xo15_ebook_driver = {
@@ -158,7 +164,6 @@ static struct acpi_driver xo15_ebook_driver = {
 	.ops = {
 		.add = ebook_switch_add,
 		.remove = ebook_switch_remove,
-		.notify = ebook_switch_notify,
 	},
 	.drv.pm = &ebook_switch_pm,
 };

@@ -817,9 +817,10 @@ end:
 }
 
 /* Handle ACPI event notifications */
-static void acpi_power_meter_notify(struct acpi_device *device, u32 event)
+static void acpi_power_meter_notify(acpi_handle handle, u32 event, void *data)
 {
 	struct acpi_power_meter_resource *resource;
+	struct acpi_device *device = data;
 	int res;
 
 	if (!device || !acpi_driver_data(device))
@@ -897,8 +898,12 @@ static int acpi_power_meter_add(struct acpi_device *device)
 		goto exit_remove;
 	}
 
-	res = 0;
-	goto exit;
+	res = acpi_device_install_event_handler(device, ACPI_DEVICE_NOTIFY,
+						acpi_power_meter_notify);
+	if (res)
+		goto exit_remove;
+
+	return 0;
 
 exit_remove:
 	remove_attrs(resource);
@@ -906,7 +911,7 @@ exit_free_capability:
 	free_capabilities(resource);
 exit_free:
 	kfree(resource);
-exit:
+
 	return res;
 }
 
@@ -917,6 +922,7 @@ static void acpi_power_meter_remove(struct acpi_device *device)
 	if (!device || !acpi_driver_data(device))
 		return;
 
+	acpi_device_remove_event_handler(device, ACPI_DEVICE_NOTIFY, acpi_power_meter_notify);
 	resource = acpi_driver_data(device);
 	hwmon_device_unregister(resource->hwmon_dev);
 
@@ -953,7 +959,6 @@ static struct acpi_driver acpi_power_meter_driver = {
 	.ops = {
 		.add = acpi_power_meter_add,
 		.remove = acpi_power_meter_remove,
-		.notify = acpi_power_meter_notify,
 		},
 	.drv.pm = pm_sleep_ptr(&acpi_power_meter_pm),
 };

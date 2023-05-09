@@ -180,8 +180,9 @@ static acpi_status cmpc_get_accel_v4(acpi_handle handle,
 	return status;
 }
 
-static void cmpc_accel_handler_v4(struct acpi_device *dev, u32 event)
+static void cmpc_accel_handler_v4(acpi_handle handle, u32 event, void *data)
 {
+	struct acpi_device *dev = data;
 	if (event == 0x81) {
 		int16_t x, y, z;
 		acpi_status status;
@@ -407,6 +408,11 @@ static int cmpc_accel_add_v4(struct acpi_device *acpi)
 	inputdev = dev_get_drvdata(&acpi->dev);
 	dev_set_drvdata(&inputdev->dev, accel);
 
+	error = acpi_device_install_event_handler(acpi, ACPI_DEVICE_NOTIFY,
+						  cmpc_accel_handler_v4);
+	if (error)
+		goto failed_input;
+
 	return 0;
 
 failed_input:
@@ -420,6 +426,7 @@ failed_sensitivity:
 
 static void cmpc_accel_remove_v4(struct acpi_device *acpi)
 {
+	acpi_device_remove_event_handler(acpi, ACPI_DEVICE_NOTIFY, cmpc_accel_handler_v4);
 	device_remove_file(&acpi->dev, &cmpc_accel_sensitivity_attr_v4);
 	device_remove_file(&acpi->dev, &cmpc_accel_g_select_attr_v4);
 	cmpc_remove_acpi_notify_device(acpi);
@@ -441,7 +448,6 @@ static struct acpi_driver cmpc_accel_acpi_driver_v4 = {
 	.ops = {
 		.add = cmpc_accel_add_v4,
 		.remove = cmpc_accel_remove_v4,
-		.notify = cmpc_accel_handler_v4,
 	},
 	.drv.pm = &cmpc_accel_pm,
 };
@@ -523,8 +529,10 @@ static acpi_status cmpc_get_accel(acpi_handle handle,
 	return status;
 }
 
-static void cmpc_accel_handler(struct acpi_device *dev, u32 event)
+static void cmpc_accel_handler(acpi_handle handle, u32 event, void *data)
 {
+	struct acpi_device *dev = data;
+
 	if (event == 0x81) {
 		unsigned char x, y, z;
 		acpi_status status;
@@ -639,6 +647,11 @@ static int cmpc_accel_add(struct acpi_device *acpi)
 	inputdev = dev_get_drvdata(&acpi->dev);
 	dev_set_drvdata(&inputdev->dev, accel);
 
+	error = acpi_device_install_event_handler(acpi, ACPI_DEVICE_NOTIFY,
+						  cmpc_accel_handler);
+	if (error)
+		goto failed_input;
+
 	return 0;
 
 failed_input:
@@ -650,6 +663,7 @@ failed_file:
 
 static void cmpc_accel_remove(struct acpi_device *acpi)
 {
+	acpi_device_remove_event_handler(acpi, ACPI_DEVICE_NOTIFY, cmpc_accel_handler);
 	device_remove_file(&acpi->dev, &cmpc_accel_sensitivity_attr);
 	cmpc_remove_acpi_notify_device(acpi);
 }
@@ -667,7 +681,6 @@ static struct acpi_driver cmpc_accel_acpi_driver = {
 	.ops = {
 		.add = cmpc_accel_add,
 		.remove = cmpc_accel_remove,
-		.notify = cmpc_accel_handler,
 	}
 };
 
@@ -693,8 +706,9 @@ static acpi_status cmpc_get_tablet(acpi_handle handle,
 	return status;
 }
 
-static void cmpc_tablet_handler(struct acpi_device *dev, u32 event)
+static void cmpc_tablet_handler(acpi_handle handle, u32 event, void *data)
 {
+	struct acpi_device *dev = data;
 	unsigned long long val = 0;
 	struct input_dev *inputdev = dev_get_drvdata(&dev->dev);
 
@@ -723,12 +737,20 @@ static void cmpc_tablet_idev_init(struct input_dev *inputdev)
 
 static int cmpc_tablet_add(struct acpi_device *acpi)
 {
-	return cmpc_add_acpi_notify_device(acpi, "cmpc_tablet",
-					   cmpc_tablet_idev_init);
+	int ret;
+
+	ret = cmpc_add_acpi_notify_device(acpi, "cmpc_tablet",
+					  cmpc_tablet_idev_init);
+	if (ret)
+		return ret;
+
+	return acpi_device_install_event_handler(acpi, ACPI_DEVICE_NOTIFY,
+						 cmpc_tablet_handler);
 }
 
 static void cmpc_tablet_remove(struct acpi_device *acpi)
 {
+	acpi_device_remove_event_handler(acpi, ACPI_DEVICE_NOTIFY, cmpc_tablet_handler);
 	cmpc_remove_acpi_notify_device(acpi);
 }
 
@@ -761,7 +783,6 @@ static struct acpi_driver cmpc_tablet_acpi_driver = {
 	.ops = {
 		.add = cmpc_tablet_add,
 		.remove = cmpc_tablet_remove,
-		.notify = cmpc_tablet_handler,
 	},
 	.drv.pm = &cmpc_tablet_pm,
 };
@@ -1026,8 +1047,9 @@ static int cmpc_keys_codes[] = {
 	KEY_MAX
 };
 
-static void cmpc_keys_handler(struct acpi_device *dev, u32 event)
+static void cmpc_keys_handler(acpi_handle handle, u32 event, void *data)
 {
+	struct acpi_device *dev = data;
 	struct input_dev *inputdev;
 	int code = KEY_MAX;
 
@@ -1049,12 +1071,20 @@ static void cmpc_keys_idev_init(struct input_dev *inputdev)
 
 static int cmpc_keys_add(struct acpi_device *acpi)
 {
-	return cmpc_add_acpi_notify_device(acpi, "cmpc_keys",
-					   cmpc_keys_idev_init);
+	int error;
+
+	error = cmpc_add_acpi_notify_device(acpi, "cmpc_keys",
+					    cmpc_keys_idev_init);
+	if (error)
+		return error;
+
+	return acpi_device_install_event_handler(acpi, ACPI_DEVICE_NOTIFY,
+						 cmpc_keys_handler);
 }
 
 static void cmpc_keys_remove(struct acpi_device *acpi)
 {
+	acpi_device_remove_event_handler(acpi, ACPI_DEVICE_NOTIFY, cmpc_keys_handler);
 	cmpc_remove_acpi_notify_device(acpi);
 }
 
@@ -1071,7 +1101,6 @@ static struct acpi_driver cmpc_keys_acpi_driver = {
 	.ops = {
 		.add = cmpc_keys_add,
 		.remove = cmpc_keys_remove,
-		.notify = cmpc_keys_handler,
 	}
 };
 

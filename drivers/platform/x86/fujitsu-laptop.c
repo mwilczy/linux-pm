@@ -136,6 +136,8 @@ struct fujitsu_laptop {
 
 static struct acpi_device *fext;
 
+static void acpi_fujitsu_laptop_notify(acpi_handle handle, u32 event, void *data);
+
 /* Fujitsu ACPI interface function */
 
 static int call_fext_func(struct acpi_device *device,
@@ -382,6 +384,37 @@ static int fujitsu_backlight_register(struct acpi_device *device)
 	return 0;
 }
 
+static void acpi_fujitsu_bl_notify(acpi_handle handle, u32 event, void *data)
+{
+	struct acpi_device *device = data;
+	struct fujitsu_bl *priv;
+	int oldb, newb;
+
+	priv = acpi_driver_data(device);
+
+	if (event != ACPI_FUJITSU_NOTIFY_CODE) {
+		acpi_handle_info(device->handle, "unsupported event [0x%x]\n",
+				 event);
+		sparse_keymap_report_event(priv->input, -1, 1, true);
+		return;
+	}
+
+	oldb = priv->brightness_level;
+	get_lcd_level(device);
+	newb = priv->brightness_level;
+
+	acpi_handle_debug(device->handle,
+			  "brightness button event [%i -> %i]\n", oldb, newb);
+
+	if (oldb == newb)
+		return;
+
+	if (!disable_brightness_adjust)
+		set_lcd_level(device, newb);
+
+	sparse_keymap_report_event(priv->input, oldb < newb, 1, true);
+}
+
 static int acpi_fujitsu_bl_add(struct acpi_device *device)
 {
 	struct fujitsu_bl *priv;
@@ -410,37 +443,17 @@ static int acpi_fujitsu_bl_add(struct acpi_device *device)
 	if (ret)
 		return ret;
 
-	return fujitsu_backlight_register(device);
+	ret = fujitsu_backlight_register(device);
+	if (ret)
+		return ret;
+
+	return acpi_device_install_event_handler(device, ACPI_DEVICE_NOTIFY,
+						 acpi_fujitsu_bl_notify);
 }
 
-/* Brightness notify */
-
-static void acpi_fujitsu_bl_notify(struct acpi_device *device, u32 event)
+static void acpi_fujitsu_bl_remove(struct acpi_device *device)
 {
-	struct fujitsu_bl *priv = acpi_driver_data(device);
-	int oldb, newb;
-
-	if (event != ACPI_FUJITSU_NOTIFY_CODE) {
-		acpi_handle_info(device->handle, "unsupported event [0x%x]\n",
-				 event);
-		sparse_keymap_report_event(priv->input, -1, 1, true);
-		return;
-	}
-
-	oldb = priv->brightness_level;
-	get_lcd_level(device);
-	newb = priv->brightness_level;
-
-	acpi_handle_debug(device->handle,
-			  "brightness button event [%i -> %i]\n", oldb, newb);
-
-	if (oldb == newb)
-		return;
-
-	if (!disable_brightness_adjust)
-		set_lcd_level(device, newb);
-
-	sparse_keymap_report_event(priv->input, oldb < newb, 1, true);
+	acpi_device_remove_event_handler(device, ACPI_DEVICE_NOTIFY, acpi_fujitsu_bl_notify);
 }
 
 /* ACPI device for hotkey handling */
@@ -839,6 +852,11 @@ static int acpi_fujitsu_laptop_add(struct acpi_device *device)
 	if (ret)
 		goto err_free_fifo;
 
+	ret = acpi_device_install_event_handler(device, ACPI_DEVICE_NOTIFY,
+						acpi_fujitsu_laptop_notify);
+	if (ret)
+		goto err_free_fifo;
+
 	return 0;
 
 err_free_fifo:
@@ -850,6 +868,8 @@ err_free_fifo:
 static void acpi_fujitsu_laptop_remove(struct acpi_device *device)
 {
 	struct fujitsu_laptop *priv = acpi_driver_data(device);
+
+	acpi_device_remove_event_handler(device, ACPI_DEVICE_NOTIFY, acpi_fujitsu_laptop_notify);
 
 	fujitsu_laptop_platform_remove(device);
 
@@ -889,12 +909,15 @@ static void acpi_fujitsu_laptop_release(struct acpi_device *device)
 	}
 }
 
-static void acpi_fujitsu_laptop_notify(struct acpi_device *device, u32 event)
+static void acpi_fujitsu_laptop_notify(acpi_handle handle, u32 event, void *data)
 {
-	struct fujitsu_laptop *priv = acpi_driver_data(device);
+	struct acpi_device *device = data;
+	struct fujitsu_laptop *priv;
 	unsigned long flags;
 	int scancode, i = 0;
 	unsigned int irb;
+
+	priv = acpi_driver_data(device);
 
 	if (event != ACPI_FUJITSU_NOTIFY_CODE) {
 		acpi_handle_info(device->handle, "Unsupported event [0x%x]\n",
@@ -947,7 +970,7 @@ static struct acpi_driver acpi_fujitsu_bl_driver = {
 	.ids = fujitsu_bl_device_ids,
 	.ops = {
 		.add = acpi_fujitsu_bl_add,
-		.notify = acpi_fujitsu_bl_notify,
+		.remove = acpi_fujitsu_bl_remove,
 		},
 };
 
@@ -963,7 +986,6 @@ static struct acpi_driver acpi_fujitsu_laptop_driver = {
 	.ops = {
 		.add = acpi_fujitsu_laptop_add,
 		.remove = acpi_fujitsu_laptop_remove,
-		.notify = acpi_fujitsu_laptop_notify,
 		},
 };
 

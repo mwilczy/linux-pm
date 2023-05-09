@@ -627,29 +627,30 @@ static void input_key(struct system76_data *data, unsigned int code)
 }
 
 // Handle ACPI notification
-static void system76_notify(struct acpi_device *acpi_dev, u32 event)
+static void system76_notify(acpi_handle handle, u32 event, void *data)
 {
-	struct system76_data *data;
+	struct acpi_device *acpi_dev = data;
+	struct system76_data *s_data;
 
-	data = acpi_driver_data(acpi_dev);
+	s_data = acpi_driver_data(acpi_dev);
 	switch (event) {
 	case 0x80:
-		kb_led_hotkey_hardware(data);
+		kb_led_hotkey_hardware(s_data);
 		break;
 	case 0x81:
-		kb_led_hotkey_toggle(data);
+		kb_led_hotkey_toggle(s_data);
 		break;
 	case 0x82:
-		kb_led_hotkey_down(data);
+		kb_led_hotkey_down(s_data);
 		break;
 	case 0x83:
-		kb_led_hotkey_up(data);
+		kb_led_hotkey_up(s_data);
 		break;
 	case 0x84:
-		kb_led_hotkey_color(data);
+		kb_led_hotkey_color(s_data);
 		break;
 	case 0x85:
-		input_key(data, KEY_SCREENLOCK);
+		input_key(s_data, KEY_SCREENLOCK);
 		break;
 	}
 }
@@ -733,6 +734,10 @@ static int system76_add(struct acpi_device *acpi_dev)
 		system76_battery_init();
 	}
 
+	err = acpi_device_install_event_handler(acpi_dev, ACPI_DEVICE_NOTIFY, system76_notify);
+	if (err)
+		goto error;
+
 	return 0;
 
 error:
@@ -749,6 +754,8 @@ static void system76_remove(struct acpi_device *acpi_dev)
 	struct system76_data *data;
 
 	data = acpi_driver_data(acpi_dev);
+
+	acpi_device_remove_event_handler(acpi_dev, ACPI_DEVICE_NOTIFY, system76_notify);
 
 	if (data->has_open_ec) {
 		system76_battery_exit();
@@ -769,7 +776,6 @@ static struct acpi_driver system76_driver = {
 	.ops = {
 		.add = system76_add,
 		.remove = system76_remove,
-		.notify = system76_notify,
 	},
 };
 module_acpi_driver(system76_driver);

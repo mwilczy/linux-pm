@@ -372,7 +372,7 @@ static inline void acpi_cppc_processor_exit(struct acpi_processor *pr)
 #endif	/* CONFIG_ACPI_CPPC_LIB */
 
 /* in processor_pdc.c */
-void acpi_processor_set_pdc(acpi_handle handle);
+void __deprecated acpi_processor_set_pdc(acpi_handle handle);
 
 /* in processor_throttling.c */
 #ifdef CONFIG_ACPI_CPU_FREQ_PSS

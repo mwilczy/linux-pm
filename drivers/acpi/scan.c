@@ -2167,6 +2167,172 @@ static int acpi_scan_attach_handler(struct acpi_device *device)
 	return ret;
 }
 
+static const struct acpi_device_id gpe_block_ids[] = {
+	{"ACPI0006"},
+	{}
+};
+
+
+/*static acpi_status acpi_parse_crs(struct acpi_resource *ares,
+				  void *context)
+{
+	// so in here we would like to
+	struct acpi_gpe_block_crs *gpe_context = context;
+	int interrupt_number;
+	struct resource r;
+	int allowed_types = IORESOURCE_MEM & IORESOURCE_IO;
+	// struct list_head resource_list;
+
+
+	acpi_dev_filter_resource_type(ares, allowed);
+
+	// we need to figure out acpi_generic_address
+	if (ares->type == ACPI_RESOURCE_TYPE_IRQ)
+
+
+
+
+	if (!acpi_dev_resource_interrupt(ares, 0, &r)) {
+		dev_err(dev, "unable to parse IRQ resource\n");
+		return AE_ERROR;
+	}
+
+	if (ares->type == ACPI_RESOURCE_TYPE_IRQ)
+		gpe_context->irq = r.interrupts[0];
+	else if(ares->type == ACPI_RESOURCE_TYPE_EXTENDED_IRQ)
+		gpe_context->irq = pext->interrupts[0];
+}*/
+
+static int acpi_gpe_fill_address(struct acpi_generic_address *gpe_block_address,
+				 u8 type,
+				 int *register_count,
+				 struct resource_entry *rentry)
+{
+	if (!gpe_block_address->address)
+		return -EIO;
+
+	gpe_block_address->address = rentry->res->start;
+	gpe_block_address->space_id = type;
+	*register_count = (rentry->res->end - rentry->res->start) \
+			 / ACPI_GPE_REGISTER_WIDTH;
+
+	return 0;
+}
+
+static int acpi_gpe_block_attach(struct acpi_device *adev,
+				 const struct acpi_device_id *not_used)
+{
+	struct acpi_generic_address *gpe_block_address = {};
+	//struct acpi_gpe_xrupt_info *gpe_xrupt_info;
+	//struct acpi_gpe_block_info *gpe_block;
+	//union acpi_operand_object *obj_desc;
+	//struct acpi_namespace_node *node;
+	struct list_head resource_list;
+	struct resource_entry *rentry;
+	int register_count;
+	acpi_status status;
+	int irq;
+	int ret;
+
+	if (!acpi_has_method(adev->handle, METHOD_NAME__CRS))
+		/* it's not a block GPE if it doesn't contain any _CRS */
+		return 0;
+
+	INIT_LIST_HEAD(&resource_list);
+
+	ret = acpi_dev_get_resources(adev, &resource_list, NULL, NULL);
+	if (ret)
+		return ret;
+
+	list_for_each_entry(rentry, &resource_list, node) {
+		switch (resource_type(rentry->res)) {
+		case IORESOURCE_IO:
+			ret = acpi_gpe_fill_address(gpe_block_address,
+						    ACPI_ADR_SPACE_SYSTEM_IO,
+						    &register_count,
+						    rentry);
+			if (ret) {
+				acpi_handle_err(adev->handle,
+						"Multiple IO blocks in GPE block _CRS\n");
+				return ret;
+			}
+			break;
+		case IORESOURCE_MEM:
+			ret = acpi_gpe_fill_address(gpe_block_address,
+						    ACPI_ADR_SPACE_SYSTEM_MEMORY,
+						    &register_count,
+						    rentry);
+			if (ret) {
+				acpi_handle_err(adev->handle,
+						"Multiple MEM blocks in GPE block _CRS\n");
+				return ret;
+			}
+			break;
+		case IORESOURCE_IRQ:
+			if (irq) {
+				acpi_handle_err(adev->handle,
+						"Multiple IRQ blocks in GPE block _CRS\n");
+				return ret;
+			}
+			irq = rentry->res->start;
+			break;
+		default:
+			break;
+		}
+	}
+
+	status = acpi_install_gpe_block(adev->handle,
+					gpe_block_address,
+					register_count,
+					irq);
+	if (ACPI_FAILURE(status))
+		return -EINVAL;
+
+	status = acpi_update_all_gpes();
+	if (ACPI_FAILURE(status)) {
+		acpi_remove_gpe_block(adev->handle);
+		return -EIO;
+	}
+
+	/*status = acpi_ev_get_gpe_xrupt_block(irq, &gpe_xrupt_info);
+	if (ACPI_FAILURE(status)) {
+		ret = -ENODEV;
+		goto err_remove_gpe_block;
+	}
+
+	node = acpi_ns_validate_handle(adev->handle);
+	if (!node) {
+		ret = -EINVAL;
+		goto err_remove_gpe_block;
+	}
+
+	obj_desc = acpi_ns_get_attached_object(node);
+	if (!obj_desc || !obj_desc->device.gpe_block) {
+		ret = -ENODEV;
+		goto err_remove_gpe_block;
+	}
+
+	gpe_block = obj_desc->device.gpe_block;
+	status = acpi_ev_initialize_gpe_block(gpe_xrupt_info,
+					      gpe_block,
+			     		      NULL);
+	if (ACPI_FAILURE(status)) {
+		ret = -EIO;
+		goto err_remove_gpe_block;
+	}
+*/
+	return 1;
+
+/*err_remove_gpe_block:
+	acpi_remove_gpe_block(adev->handle);
+	return ret;*/
+}
+
+static struct acpi_scan_handler gpe_block_device_handler = {
+	.ids = gpe_block_ids,
+	.attach = acpi_gpe_block_attach,
+};
+
 static int acpi_bus_attach(struct acpi_device *device, void *first_pass)
 {
 	bool skip = !first_pass && device->flags.visited;
@@ -2617,6 +2783,7 @@ void __init acpi_scan_init(void)
 	acpi_init_lpit();
 
 	acpi_scan_add_handler(&generic_device_handler);
+	acpi_scan_add_handler(&gpe_block_device_handler);
 
 	/*
 	 * If there is STAO table, check whether it needs to ignore the UART

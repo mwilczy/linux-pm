@@ -70,8 +70,19 @@ static acpi_status
 acpi_processor_eval_pdc(acpi_handle handle, struct acpi_object_list *pdc_in)
 {
 	acpi_status status = AE_OK;
+	union acpi_object *obj;
+		u32 *buffer = NULL;
 
+		obj = pdc_in->pointer;
+		buffer = (u32 *)(obj->buffer.pointer);
 	status = acpi_evaluate_object(handle, "_PDC", pdc_in, NULL);
+
+	if (ACPI_FAILURE(status)) {
+		printk("MICHAL: pdc FAILED capbuf=%X\n", buffer[2]);
+	}
+	else {
+		printk("MICHAL: pdc SUCCEEDED capbuf=%X\n", buffer[2]);
+	}
 
 	if (ACPI_FAILURE(status))
 		acpi_handle_debug(handle,

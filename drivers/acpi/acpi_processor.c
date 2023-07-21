@@ -574,16 +574,21 @@ static acpi_status __init acpi_processor_osc(acpi_handle handle, u32 lvl,
 	};
 	acpi_status status;
 
+	printk("MICHAL 1 acpi_processor_osc\n");
+
 	if (!processor_physically_present(handle))
 		return AE_OK;
 
 	arch_acpi_set_proc_cap_bits(&capbuf[OSC_SUPPORT_DWORD]);
 
+	printk("MICHAL 2 acpi_processor_osc\n");
 	status = acpi_run_osc(handle, &osc_context);
 	if (ACPI_FAILURE(status))
 		return status;
 
 	kfree(osc_context.ret.pointer);
+
+	printk("MICHAL 3 acpi_processor_osc\n");
 
 	return AE_OK;
 }
@@ -594,6 +599,8 @@ static bool __init acpi_early_processor_osc(void)
 
 	acpi_proc_quirk_mwait_check();
 
+
+	printk("MICHAL 1 acpi_early_processor_osc\n");
 	status = acpi_walk_namespace(ACPI_TYPE_PROCESSOR, ACPI_ROOT_OBJECT,
 				     ACPI_UINT32_MAX, acpi_processor_osc, NULL,
 				     NULL, NULL);
@@ -602,9 +609,11 @@ static bool __init acpi_early_processor_osc(void)
 
 	status = acpi_get_devices(ACPI_PROCESSOR_DEVICE_HID, acpi_processor_osc,
 				  NULL, NULL);
+	printk("MICHAL 2 acpi_early_processor_osc\n");
 	if (ACPI_FAILURE(status))
 		return false;
 
+	printk("MICHAL 3 acpi_early_processor_osc\n");
 	return true;
 }
 

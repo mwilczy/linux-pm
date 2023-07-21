@@ -176,11 +176,12 @@ static void acpi_print_osc_error(acpi_handle handle,
 
 	acpi_handle_debug(handle, "(%s): %s\n", context->uuid_str, error);
 
-	pr_debug("_OSC request data:");
+	pr_err("err: %s\n", error);
+	pr_err("_OSC request data:");
 	for (i = 0; i < context->cap.length; i += sizeof(u32))
 		pr_debug(" %x", *((u32 *)(context->cap.pointer + i)));
 
-	pr_debug("\n");
+	pr_err("\n");
 }
 
 acpi_status acpi_run_osc(acpi_handle handle, struct acpi_osc_context *context)
@@ -193,10 +194,13 @@ acpi_status acpi_run_osc(acpi_handle handle, struct acpi_osc_context *context)
 	u32 errors;
 	struct acpi_buffer output = {ACPI_ALLOCATE_BUFFER, NULL};
 
+	printk("MICHAL acpi_run_osc 1\n");
 	if (!context)
 		return AE_ERROR;
 	if (guid_parse(context->uuid_str, &guid))
 		return AE_ERROR;
+
+	printk("MICHAL acpi_run_osc 2\n");
 	context->ret.length = ACPI_ALLOCATE_BUFFER;
 	context->ret.pointer = NULL;
 
@@ -218,8 +222,12 @@ acpi_status acpi_run_osc(acpi_handle handle, struct acpi_osc_context *context)
 	if (ACPI_FAILURE(status))
 		return status;
 
+	printk("MICHAL acpi_run_osc 3\n");
+
 	if (!output.length)
 		return AE_NULL_OBJECT;
+
+	printk("MICHAL acpi_run_osc 4\n");
 
 	out_obj = output.pointer;
 	if (out_obj->type != ACPI_TYPE_BUFFER
@@ -229,6 +237,8 @@ acpi_status acpi_run_osc(acpi_handle handle, struct acpi_osc_context *context)
 		status = AE_TYPE;
 		goto out_kfree;
 	}
+
+	printk("MICHAL acpi_run_osc 5\n");
 	/* Need to ignore the bit0 in result code */
 	errors = *((u32 *)out_obj->buffer.pointer) & ~(1 << 0);
 	if (errors) {
@@ -242,15 +252,18 @@ acpi_status acpi_run_osc(acpi_handle handle, struct acpi_osc_context *context)
 			acpi_print_osc_error(handle, context,
 				"_OSC invalid revision");
 		if (errors & OSC_CAPABILITIES_MASK_ERROR) {
+			printk("MICHAL acpi_run_osc 6\n");
 			if (((u32 *)context->cap.pointer)[OSC_QUERY_DWORD]
 			    & OSC_QUERY_ENABLE)
 				goto out_success;
 			status = AE_SUPPORT;
 			goto out_kfree;
 		}
+		printk("MICHAL acpi_run_osc 7\n");
 		status = AE_ERROR;
 		goto out_kfree;
 	}
+	printk("MICHAL acpi_run_osc 8\n");
 out_success:
 	context->ret.length = out_obj->buffer.length;
 	context->ret.pointer = kmemdup(out_obj->buffer.pointer,

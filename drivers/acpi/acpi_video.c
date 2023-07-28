@@ -25,6 +25,7 @@
 #include <linux/dmi.h>
 #include <linux/suspend.h>
 #include <linux/acpi.h>
+#include <linux/platform_device.h>
 #include <acpi/video.h>
 #include <linux/uaccess.h>
 
@@ -75,8 +76,8 @@ static int register_count;
 static DEFINE_MUTEX(register_count_mutex);
 static DEFINE_MUTEX(video_list_lock);
 static LIST_HEAD(video_bus_head);
-static int acpi_video_bus_add(struct acpi_device *device);
-static void acpi_video_bus_remove(struct acpi_device *device);
+static int acpi_video_bus_probe(struct platform_device *pdev);
+static void acpi_video_bus_remove(struct platform_device *pdev);
 static void acpi_video_bus_notify(acpi_handle handle, u32 event, void *data);
 
 /*
@@ -97,14 +98,13 @@ static const struct acpi_device_id video_device_ids[] = {
 };
 MODULE_DEVICE_TABLE(acpi, video_device_ids);
 
-static struct acpi_driver acpi_video_bus = {
-	.name = "video",
-	.class = ACPI_VIDEO_CLASS,
-	.ids = video_device_ids,
-	.ops = {
-		.add = acpi_video_bus_add,
-		.remove = acpi_video_bus_remove,
-		},
+static struct platform_driver acpi_video_bus = {
+	.probe = acpi_video_bus_probe,
+	.remove_new = acpi_video_bus_remove,
+	.driver = {
+		.name = "video",
+		.acpi_match_table = video_device_ids,
+	},
 };
 
 struct acpi_video_bus_flags {
@@ -154,7 +154,7 @@ struct acpi_video_enumerated_device {
 };
 
 struct acpi_video_bus {
-	struct acpi_device *device;
+	struct device *dev;
 	bool backlight_registered;
 	u8 dos_setting;
 	struct acpi_video_enumerated_device *attached_array;
@@ -681,7 +681,7 @@ acpi_video_bus_DOS(struct acpi_video_bus *video, int bios_flag, int lcd_flag)
 	if (bios_flag < 0 || bios_flag > 3 || lcd_flag < 0 || lcd_flag > 1)
 		return -EINVAL;
 	video->dos_setting = (lcd_flag << 2) | bios_flag;
-	status = acpi_execute_simple_method(video->device->handle, "_DOS",
+	status = acpi_execute_simple_method(ACPI_HANDLE(video->dev), "_DOS",
 					    (lcd_flag << 2) | bios_flag);
 	if (ACPI_FAILURE(status))
 		return -EIO;
@@ -1003,17 +1003,19 @@ static void acpi_video_device_find_cap(struct acpi_video_device *device)
 
 static void acpi_video_bus_find_cap(struct acpi_video_bus *video)
 {
-	if (acpi_has_method(video->device->handle, "_DOS"))
+	acpi_handle handle = ACPI_HANDLE(video->dev);
+
+	if (acpi_has_method(handle, "_DOS"))
 		video->cap._DOS = 1;
-	if (acpi_has_method(video->device->handle, "_DOD"))
+	if (acpi_has_method(handle, "_DOD"))
 		video->cap._DOD = 1;
-	if (acpi_has_method(video->device->handle, "_ROM"))
+	if (acpi_has_method(handle, "_ROM"))
 		video->cap._ROM = 1;
-	if (acpi_has_method(video->device->handle, "_GPD"))
+	if (acpi_has_method(handle, "_GPD"))
 		video->cap._GPD = 1;
-	if (acpi_has_method(video->device->handle, "_SPD"))
+	if (acpi_has_method(handle, "_SPD"))
 		video->cap._SPD = 1;
-	if (acpi_has_method(video->device->handle, "_VPO"))
+	if (acpi_has_method(handle, "_VPO"))
 		video->cap._VPO = 1;
 }
 
@@ -1024,10 +1026,11 @@ static void acpi_video_bus_find_cap(struct acpi_video_bus *video)
 
 static int acpi_video_bus_check(struct acpi_video_bus *video)
 {
+	struct acpi_device *device = ACPI_COMPANION(video->dev);
 	acpi_status status = -ENOENT;
 	struct pci_dev *dev;
 
-	dev = acpi_get_pci_dev(video->device->handle);
+	dev = acpi_get_pci_dev(device->handle);
 	if (!dev)
 		return -ENODEV;
 	pci_dev_put(dev);
@@ -1041,7 +1044,7 @@ static int acpi_video_bus_check(struct acpi_video_bus *video)
 	if (video->cap._DOS || video->cap._DOD) {
 		if (!video->cap._DOS) {
 			pr_info(FW_BUG "ACPI(%s) defines _DOD but not _DOS\n",
-				acpi_device_bid(video->device));
+				acpi_device_bid(device));
 		}
 		video->flags.multihead = 1;
 		status = 0;
@@ -1234,7 +1237,7 @@ acpi_video_device_bind(struct acpi_video_bus *video,
 		ids = &video->attached_array[i];
 		if (device->device_id == (ids->value.int_val & 0xffff)) {
 			ids->bind_info = device;
-			acpi_handle_debug(video->device->handle, "%s: %d\n",
+			acpi_handle_debug(ACPI_HANDLE(video->dev), "%s: %d\n",
 					  __func__, i);
 		}
 	}
@@ -1282,13 +1285,14 @@ static int acpi_video_device_enumerate(struct acpi_video_bus *video)
 	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
 	union acpi_object *dod = NULL;
 	union acpi_object *obj;
+	acpi_handle handle = ACPI_HANDLE(video->dev);
 
 	if (!video->cap._DOD)
 		return AE_NOT_EXIST;
 
-	status = acpi_evaluate_object(video->device->handle, "_DOD", NULL, &buffer);
+	status = acpi_evaluate_object(handle, "_DOD", NULL, &buffer);
 	if (ACPI_FAILURE(status)) {
-		acpi_handle_info(video->device->handle,
+		acpi_handle_info(handle,
 				 "_DOD evaluation failed: %s\n",
 				 acpi_format_exception(status));
 		return status;
@@ -1296,12 +1300,12 @@ static int acpi_video_device_enumerate(struct acpi_video_bus *video)
 
 	dod = buffer.pointer;
 	if (!dod || (dod->type != ACPI_TYPE_PACKAGE)) {
-		acpi_handle_info(video->device->handle, "Invalid _DOD data\n");
+		acpi_handle_info(handle, "Invalid _DOD data\n");
 		status = -EFAULT;
 		goto out;
 	}
 
-	acpi_handle_debug(video->device->handle, "Found %d video heads in _DOD\n",
+	acpi_handle_debug(handle, "Found %d video heads in _DOD\n",
 			  dod->package.count);
 
 	active_list = kcalloc(1 + dod->package.count,
@@ -1317,7 +1321,7 @@ static int acpi_video_device_enumerate(struct acpi_video_bus *video)
 		obj = &dod->package.elements[i];
 
 		if (obj->type != ACPI_TYPE_INTEGER) {
-			acpi_handle_info(video->device->handle,
+			acpi_handle_info(handle,
 					 "Invalid _DOD data in element %d\n", i);
 			continue;
 		}
@@ -1325,8 +1329,7 @@ static int acpi_video_device_enumerate(struct acpi_video_bus *video)
 		active_list[count].value.int_val = obj->integer.value;
 		active_list[count].bind_info = NULL;
 
-		acpi_handle_debug(video->device->handle,
-				  "_DOD element[%d] = %d\n", i,
+		acpi_handle_debug(handle, "_DOD element[%d] = %d\n", i,
 				  (int)obj->integer.value);
 
 		count++;
@@ -1525,8 +1528,8 @@ static int acpi_video_bus_stop_devices(struct acpi_video_bus *video)
 
 static void acpi_video_bus_notify(acpi_handle handle, u32 event, void *data)
 {
-	struct acpi_device *device = data;
-	struct acpi_video_bus *video = acpi_driver_data(device);
+	struct acpi_video_bus *video = data;
+	struct acpi_device *device = ACPI_COMPANION(video->dev);
 	struct input_dev *input;
 	int keycode = 0;
 
@@ -1661,7 +1664,7 @@ static int acpi_video_resume(struct notifier_block *nb,
 	case PM_POST_RESTORE:
 		video = container_of(nb, struct acpi_video_bus, pm_nb);
 
-		dev_info(&video->device->dev, "Restoring backlight state\n");
+		dev_info(video->dev, "Restoring backlight state\n");
 
 		for (i = 0; i < video->attached_count; i++) {
 			video_device = video->attached_array[i].bind_info;
@@ -1878,6 +1881,7 @@ static void acpi_video_dev_add_notify_handler(struct acpi_video_device *device)
 
 static int acpi_video_bus_add_notify_handler(struct acpi_video_bus *video)
 {
+	struct acpi_device *device = ACPI_COMPANION(video->dev);
 	struct input_dev *input;
 	struct acpi_video_device *dev;
 	int error;
@@ -1893,13 +1897,13 @@ static int acpi_video_bus_add_notify_handler(struct acpi_video_bus *video)
 		goto err_free_input;
 
 	snprintf(video->phys, sizeof(video->phys),
-			"%s/video/input0", acpi_device_hid(video->device));
+			"%s/video/input0", acpi_device_hid(device));
 
-	input->name = acpi_device_name(video->device);
+	input->name = acpi_device_name(device);
 	input->phys = video->phys;
 	input->id.bustype = BUS_HOST;
 	input->id.product = 0x06;
-	input->dev.parent = &video->device->dev;
+	input->dev.parent = video->dev;
 	input->evbit[0] = BIT(EV_KEY);
 	set_bit(KEY_SWITCHVIDEOMODE, input->keybit);
 	set_bit(KEY_VIDEO_NEXT, input->keybit);
@@ -1969,17 +1973,18 @@ static int acpi_video_bus_put_devices(struct acpi_video_bus *video)
 
 static int instance;
 
-static int acpi_video_bus_add(struct acpi_device *device)
+static int acpi_video_bus_probe(struct platform_device *pdev)
 {
+	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
 	struct acpi_video_bus *video;
 	bool auto_detect;
 	int error;
 	acpi_status status;
 
 	status = acpi_walk_namespace(ACPI_TYPE_DEVICE,
-				acpi_dev_parent(device)->handle, 1,
-				acpi_video_bus_match, NULL,
-				device, NULL);
+				     acpi_dev_parent(device)->handle, 1,
+				     acpi_video_bus_match, NULL,
+				     device, NULL);
 	if (status == AE_ALREADY_EXISTS) {
 		pr_info(FW_BUG
 			"Duplicate ACPI video bus devices for the"
@@ -2007,10 +2012,11 @@ static int acpi_video_bus_add(struct acpi_device *device)
 		instance++;
 	}
 
-	video->device = device;
+	video->dev = &pdev->dev;
 	strcpy(acpi_device_name(device), ACPI_VIDEO_BUS_NAME);
 	strcpy(acpi_device_class(device), ACPI_VIDEO_CLASS);
-	device->driver_data = video;
+
+	platform_set_drvdata(pdev, video);
 
 	acpi_video_bus_find_cap(video);
 	error = acpi_video_bus_check(video);
@@ -2057,7 +2063,7 @@ static int acpi_video_bus_add(struct acpi_device *device)
 	acpi_video_bus_add_notify_handler(video);
 
 	error = acpi_dev_install_notify_handler(device->handle, ACPI_DEVICE_NOTIFY,
-						acpi_video_bus_notify, device);
+						acpi_video_bus_notify, video);
 	if (error)
 		goto err_remove;
 
@@ -2074,16 +2080,16 @@ err_put_video:
 	kfree(video->attached_array);
 err_free_video:
 	kfree(video);
-	device->driver_data = NULL;
 
 	return error;
 }
 
-static void acpi_video_bus_remove(struct acpi_device *device)
+static void acpi_video_bus_remove(struct platform_device *pdev)
 {
-	struct acpi_video_bus *video = acpi_driver_data(device);
+	struct acpi_video_bus *video = platform_get_drvdata(pdev);
 
-	acpi_dev_remove_notify_handler(device->handle, ACPI_DEVICE_NOTIFY,
+	acpi_dev_remove_notify_handler(ACPI_HANDLE(video->dev),
+				       ACPI_DEVICE_NOTIFY,
 				       acpi_video_bus_notify);
 
 	mutex_lock(&video_list_lock);
@@ -2198,7 +2204,7 @@ int acpi_video_register(void)
 
 	dmi_check_system(video_dmi_table);
 
-	ret = acpi_bus_register_driver(&acpi_video_bus);
+	ret = platform_driver_register(&acpi_video_bus);
 	if (ret)
 		goto leave;
 
@@ -2218,7 +2224,7 @@ void acpi_video_unregister(void)
 {
 	mutex_lock(&register_count_mutex);
 	if (register_count) {
-		acpi_bus_unregister_driver(&acpi_video_bus);
+		platform_driver_unregister(&acpi_video_bus);
 		register_count = 0;
 		may_report_brightness_keys = false;
 	}

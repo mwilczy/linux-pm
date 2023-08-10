@@ -21,6 +21,7 @@
 #include <linux/delay.h>
 #include <linux/power_supply.h>
 #include <linux/platform_data/x86/apple.h>
+#include <linux/platform_device.h>
 #include <acpi/battery.h>
 
 #include "sbshc.h"
@@ -84,7 +85,7 @@ struct acpi_battery {
 
 struct acpi_sbs {
 	struct power_supply *charger;
-	struct acpi_device *device;
+	struct device *dev;
 	struct acpi_smb_hc *hc;
 	struct mutex lock;
 	struct acpi_battery battery[MAX_SBS_BAT];
@@ -96,7 +97,7 @@ struct acpi_sbs {
 
 #define to_acpi_sbs(x) power_supply_get_drvdata(x)
 
-static void acpi_sbs_remove(struct acpi_device *device);
+static void acpi_sbs_remove(struct platform_device *pdev);
 static int acpi_battery_get_state(struct acpi_battery *battery);
 
 static inline int battery_scale(int log)
@@ -442,7 +443,7 @@ static ssize_t acpi_battery_alarm_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct acpi_battery *battery = to_acpi_battery(dev_get_drvdata(dev));
+	struct acpi_battery *battery = dev_get_drvdata(dev);
 	acpi_battery_get_alarm(battery);
 	return sprintf(buf, "%d\n", battery->alarm_capacity *
 				acpi_battery_scale(battery) * 1000);
@@ -452,8 +453,9 @@ static ssize_t acpi_battery_alarm_store(struct device *dev,
 					struct device_attribute *attr,
 					const char *buf, size_t count)
 {
+	struct acpi_battery *battery = dev_get_drvdata(dev);
 	unsigned long x;
-	struct acpi_battery *battery = to_acpi_battery(dev_get_drvdata(dev));
+
 	if (sscanf(buf, "%lu\n", &x) == 1)
 		battery->alarm_capacity = x /
 			(1000 * acpi_battery_scale(battery));
@@ -540,7 +542,7 @@ static int acpi_battery_add(struct acpi_sbs *sbs, int id)
 		    ARRAY_SIZE(sbs_energy_battery_props);
 	}
 	battery->bat_desc.get_property = acpi_sbs_battery_get_property;
-	battery->bat = power_supply_register(&sbs->device->dev,
+	battery->bat = power_supply_register(sbs->dev,
 					&battery->bat_desc, &psy_cfg);
 	if (IS_ERR(battery->bat)) {
 		result = PTR_ERR(battery->bat);
@@ -554,7 +556,7 @@ static int acpi_battery_add(struct acpi_sbs *sbs, int id)
 	battery->have_sysfs_alarm = 1;
       end:
 	pr_info("%s [%s]: Battery Slot [%s] (battery %s)\n",
-	       ACPI_SBS_DEVICE_NAME, acpi_device_bid(sbs->device),
+	       ACPI_SBS_DEVICE_NAME, acpi_device_bid(ACPI_COMPANION(sbs->dev)),
 	       battery->name, battery->present ? "present" : "absent");
 	return result;
 }
@@ -580,14 +582,14 @@ static int acpi_charger_add(struct acpi_sbs *sbs)
 		goto end;
 
 	sbs->charger_exists = 1;
-	sbs->charger = power_supply_register(&sbs->device->dev,
+	sbs->charger = power_supply_register(sbs->dev,
 					&acpi_sbs_charger_desc, &psy_cfg);
 	if (IS_ERR(sbs->charger)) {
 		result = PTR_ERR(sbs->charger);
 		sbs->charger = NULL;
 	}
 	pr_info("%s [%s]: AC Adapter [%s] (%s)\n",
-	       ACPI_SBS_DEVICE_NAME, acpi_device_bid(sbs->device),
+	       ACPI_SBS_DEVICE_NAME, acpi_device_bid(ACPI_COMPANION(sbs->dev)),
 	       ACPI_AC_DIR_NAME, sbs->charger_present ? "on-line" : "off-line");
 end:
 	return result;
@@ -627,8 +629,9 @@ static void acpi_sbs_callback(void *context)
 	}
 }
 
-static int acpi_sbs_add(struct acpi_device *device)
+static int acpi_sbs_probe(struct platform_device *pdev)
 {
+	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
 	struct acpi_sbs *sbs;
 	int result = 0;
 	int id;
@@ -641,11 +644,12 @@ static int acpi_sbs_add(struct acpi_device *device)
 
 	mutex_init(&sbs->lock);
 
-	sbs->hc = acpi_driver_data(acpi_dev_parent(device));
-	sbs->device = device;
+	sbs->hc = dev_get_drvdata(pdev->dev.parent);
 	strcpy(acpi_device_name(device), ACPI_SBS_DEVICE_NAME);
 	strcpy(acpi_device_class(device), ACPI_SBS_CLASS);
-	device->driver_data = sbs;
+
+	sbs->dev = &pdev->dev;
+	platform_set_drvdata(pdev, sbs);
 
 	result = acpi_charger_add(sbs);
 	if (result && result != -ENODEV)
@@ -669,13 +673,13 @@ static int acpi_sbs_add(struct acpi_device *device)
 	acpi_smbus_register_callback(sbs->hc, acpi_sbs_callback, sbs);
 end:
 	if (result)
-		acpi_sbs_remove(device);
+		acpi_sbs_remove(pdev);
 	return result;
 }
 
-static void acpi_sbs_remove(struct acpi_device *device)
+static void acpi_sbs_remove(struct platform_device *pdev)
 {
-	struct acpi_sbs *sbs = acpi_driver_data(device);
+	struct acpi_sbs *sbs = platform_get_drvdata(pdev);
 	int id;
 
 	mutex_lock(&sbs->lock);
@@ -691,7 +695,7 @@ static void acpi_sbs_remove(struct acpi_device *device)
 #ifdef CONFIG_PM_SLEEP
 static int acpi_sbs_resume(struct device *dev)
 {
-	struct acpi_sbs *sbs = to_acpi_device(dev)->driver_data;
+	struct acpi_sbs *sbs = dev_get_drvdata(dev);
 
 	acpi_sbs_callback(sbs);
 	return 0;
@@ -702,14 +706,13 @@ static int acpi_sbs_resume(struct device *dev)
 
 static SIMPLE_DEV_PM_OPS(acpi_sbs_pm, NULL, acpi_sbs_resume);
 
-static struct acpi_driver acpi_sbs_driver = {
-	.name = "sbs",
-	.class = ACPI_SBS_CLASS,
-	.ids = sbs_device_ids,
-	.ops = {
-		.add = acpi_sbs_add,
-		.remove = acpi_sbs_remove,
-		},
-	.drv.pm = &acpi_sbs_pm,
+static struct platform_driver acpi_sbs_driver = {
+	.probe = acpi_sbs_probe,
+	.remove_new = acpi_sbs_remove,
+	.driver = {
+		.name = "sbs",
+		.acpi_match_table = sbs_device_ids,
+		.pm = &acpi_sbs_pm,
+	},
 };
-module_acpi_driver(acpi_sbs_driver);
+module_platform_driver(acpi_sbs_driver);

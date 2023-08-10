@@ -13,6 +13,7 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
+#include <linux/platform_device.h>
 #include "sbshc.h"
 
 #define ACPI_SMB_HC_CLASS	"smbus_host_ctl"
@@ -29,8 +30,8 @@ struct acpi_smb_hc {
 	bool done;
 };
 
-static int acpi_smbus_hc_add(struct acpi_device *device);
-static void acpi_smbus_hc_remove(struct acpi_device *device);
+static int acpi_smbus_hc_probe(struct platform_device *pdev);
+static void acpi_smbus_hc_remove(struct platform_device *pdev);
 
 static const struct acpi_device_id sbs_device_ids[] = {
 	{"ACPI0001", 0},
@@ -40,14 +41,13 @@ static const struct acpi_device_id sbs_device_ids[] = {
 
 MODULE_DEVICE_TABLE(acpi, sbs_device_ids);
 
-static struct acpi_driver acpi_smb_hc_driver = {
-	.name = "smbus_hc",
-	.class = ACPI_SMB_HC_CLASS,
-	.ids = sbs_device_ids,
-	.ops = {
-		.add = acpi_smbus_hc_add,
-		.remove = acpi_smbus_hc_remove,
-		},
+static struct platform_driver acpi_smb_hc_driver = {
+	.probe = acpi_smbus_hc_probe,
+	.remove_new = acpi_smbus_hc_remove,
+	.driver = {
+		.name = "smbus_hc",
+		.acpi_match_table = sbs_device_ids,
+	},
 };
 
 union acpi_smb_status {
@@ -242,8 +242,9 @@ extern int acpi_ec_add_query_handler(struct acpi_ec *ec, u8 query_bit,
 			      acpi_handle handle, acpi_ec_query_func func,
 			      void *data);
 
-static int acpi_smbus_hc_add(struct acpi_device *device)
+static int acpi_smbus_hc_probe(struct platform_device *pdev)
 {
+	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
 	int status;
 	unsigned long long val;
 	struct acpi_smb_hc *hc;
@@ -260,16 +261,17 @@ static int acpi_smbus_hc_add(struct acpi_device *device)
 	hc = kzalloc(sizeof(struct acpi_smb_hc), GFP_KERNEL);
 	if (!hc)
 		return -ENOMEM;
+
 	mutex_init(&hc->lock);
 	init_waitqueue_head(&hc->wait);
 
-	hc->ec = acpi_driver_data(acpi_dev_parent(device));
+	hc->ec = dev_get_drvdata(pdev->dev.parent);
 	hc->offset = (val >> 8) & 0xff;
 	hc->query_bit = val & 0xff;
-	device->driver_data = hc;
+	platform_set_drvdata(pdev, hc);
 
 	acpi_ec_add_query_handler(hc->ec, hc->query_bit, NULL, smbus_alarm, hc);
-	dev_info(&device->dev, "SBS HC: offset = 0x%0x, query_bit = 0x%0x\n",
+	dev_info(&pdev->dev, "SBS HC: offset = 0x%0x, query_bit = 0x%0x\n",
 		 hc->offset, hc->query_bit);
 
 	return 0;
@@ -277,17 +279,16 @@ static int acpi_smbus_hc_add(struct acpi_device *device)
 
 extern void acpi_ec_remove_query_handler(struct acpi_ec *ec, u8 query_bit);
 
-static void acpi_smbus_hc_remove(struct acpi_device *device)
+static void acpi_smbus_hc_remove(struct platform_device *pdev)
 {
-	struct acpi_smb_hc *hc = acpi_driver_data(device);
+	struct acpi_smb_hc *hc = platform_get_drvdata(pdev);
 
 	acpi_ec_remove_query_handler(hc->ec, hc->query_bit);
 	acpi_os_wait_events_complete();
 	kfree(hc);
-	device->driver_data = NULL;
 }
 
-module_acpi_driver(acpi_smb_hc_driver);
+module_platform_driver(acpi_smb_hc_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Alexey Starikovskiy");

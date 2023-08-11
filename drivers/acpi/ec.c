@@ -1694,12 +1694,8 @@ err:
 
 static void acpi_ec_remove(struct acpi_device *device)
 {
-	struct acpi_ec *ec;
+	struct acpi_ec *ec =  acpi_driver_data(device);
 
-	if (!device)
-		return;
-
-	ec = acpi_driver_data(device);
 	release_region(ec->data_addr, 1);
 	release_region(ec->command_addr, 1);
 	device->driver_data = NULL;

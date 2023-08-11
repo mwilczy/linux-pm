@@ -675,14 +675,9 @@ end:
 
 static void acpi_sbs_remove(struct acpi_device *device)
 {
-	struct acpi_sbs *sbs;
+	struct acpi_sbs *sbs = acpi_driver_data(device);
 	int id;
 
-	if (!device)
-		return;
-	sbs = acpi_driver_data(device);
-	if (!sbs)
-		return;
 	mutex_lock(&sbs->lock);
 	acpi_smbus_unregister_callback(sbs->hc);
 	for (id = 0; id < MAX_SBS_BAT; ++id)
@@ -696,10 +691,8 @@ static void acpi_sbs_remove(struct acpi_device *device)
 #ifdef CONFIG_PM_SLEEP
 static int acpi_sbs_resume(struct device *dev)
 {
-	struct acpi_sbs *sbs;
-	if (!dev)
-		return -EINVAL;
-	sbs = to_acpi_device(dev)->driver_data;
+	struct acpi_sbs *sbs = to_acpi_device(dev)->driver_data;
+
 	acpi_sbs_callback(sbs);
 	return 0;
 }

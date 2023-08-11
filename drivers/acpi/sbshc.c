@@ -248,9 +248,6 @@ static int acpi_smbus_hc_add(struct acpi_device *device)
 	unsigned long long val;
 	struct acpi_smb_hc *hc;
 
-	if (!device)
-		return -EINVAL;
-
 	status = acpi_evaluate_integer(device->handle, "_EC", NULL, &val);
 	if (ACPI_FAILURE(status)) {
 		pr_err("error obtaining _EC.\n");
@@ -282,12 +279,8 @@ extern void acpi_ec_remove_query_handler(struct acpi_ec *ec, u8 query_bit);
 
 static void acpi_smbus_hc_remove(struct acpi_device *device)
 {
-	struct acpi_smb_hc *hc;
+	struct acpi_smb_hc *hc = acpi_driver_data(device);
 
-	if (!device)
-		return;
-
-	hc = acpi_driver_data(device);
 	acpi_ec_remove_query_handler(hc->ec, hc->query_bit);
 	acpi_os_wait_events_complete();
 	kfree(hc);

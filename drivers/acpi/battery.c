@@ -1180,11 +1180,8 @@ static int acpi_battery_update_retry(struct acpi_battery *battery)
 
 static int acpi_battery_add(struct acpi_device *device)
 {
-	int result = 0;
-	struct acpi_battery *battery = NULL;
-
-	if (!device)
-		return -EINVAL;
+	struct acpi_battery *battery;
+	int result;
 
 	if (device->dep_unmet)
 		return -EPROBE_DEFER;
@@ -1234,12 +1231,7 @@ fail:
 
 static void acpi_battery_remove(struct acpi_device *device)
 {
-	struct acpi_battery *battery = NULL;
-
-	if (!device || !acpi_driver_data(device))
-		return;
-
-	battery = acpi_driver_data(device);
+	struct acpi_battery *battery = acpi_driver_data(device);
 
 	acpi_dev_remove_notify_handler(device->handle, ACPI_ALL_NOTIFY,
 				       acpi_battery_notify);
@@ -1257,14 +1249,7 @@ static void acpi_battery_remove(struct acpi_device *device)
 /* this is needed to learn about changes made in suspended state */
 static int acpi_battery_resume(struct device *dev)
 {
-	struct acpi_battery *battery;
-
-	if (!dev)
-		return -EINVAL;
-
-	battery = acpi_driver_data(to_acpi_device(dev));
-	if (!battery)
-		return -EINVAL;
+	struct acpi_battery *battery = acpi_driver_data(to_acpi_device(dev));
 
 	battery->update_time = 0;
 	acpi_battery_update(battery, true);

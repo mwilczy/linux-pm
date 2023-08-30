@@ -794,9 +794,6 @@ static void acpi_thermal_notify(acpi_handle handle, u32 event, void *data)
 	struct acpi_device *device = data;
 	struct acpi_thermal *tz = acpi_driver_data(device);
 
-	if (!tz)
-		return;
-
 	switch (event) {
 	case ACPI_THERMAL_NOTIFY_TEMPERATURE:
 		acpi_queue_thermal_check(tz);
@@ -925,9 +922,6 @@ static int acpi_thermal_add(struct acpi_device *device)
 	struct acpi_thermal *tz;
 	int result;
 
-	if (!device)
-		return -EINVAL;
-
 	tz = kzalloc(sizeof(struct acpi_thermal), GFP_KERNEL);
 	if (!tz)
 		return -ENOMEM;
@@ -973,12 +967,7 @@ free_memory:
 
 static void acpi_thermal_remove(struct acpi_device *device)
 {
-	struct acpi_thermal *tz;
-
-	if (!device || !acpi_driver_data(device))
-		return;
-
-	tz = acpi_driver_data(device);
+	struct acpi_thermal *tz = acpi_driver_data(device);
 
 	acpi_dev_remove_notify_handler(device->handle, ACPI_DEVICE_NOTIFY,
 				       acpi_thermal_notify);
@@ -999,15 +988,8 @@ static int acpi_thermal_suspend(struct device *dev)
 
 static int acpi_thermal_resume(struct device *dev)
 {
-	struct acpi_thermal *tz;
+	struct acpi_thermal *tz = acpi_driver_data(to_acpi_device(dev));
 	int i, j, power_state;
-
-	if (!dev)
-		return -EINVAL;
-
-	tz = acpi_driver_data(to_acpi_device(dev));
-	if (!tz)
-		return -EINVAL;
 
 	for (i = 0; i < ACPI_THERMAL_MAX_ACTIVE; i++) {
 		if (!tz->trips.active[i].trip.valid)

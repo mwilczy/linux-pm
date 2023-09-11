@@ -50,15 +50,15 @@ static void acpi_hed_notify(acpi_handle handle, u32 event, void *data)
 
 static int acpi_hed_probe(struct platform_device *pdev)
 {
-	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 	int err;
 
 	/* Only one hardware error device */
 	if (hed_handle)
 		return -EINVAL;
-	hed_handle = device->handle;
+	hed_handle = adev->handle;
 
-	err = acpi_dev_install_notify_handler(device->handle, ACPI_DEVICE_NOTIFY,
+	err = acpi_dev_install_notify_handler(adev->handle, ACPI_DEVICE_NOTIFY,
 					      acpi_hed_notify, NULL);
 	if (err)
 		hed_handle = NULL;
@@ -68,9 +68,9 @@ static int acpi_hed_probe(struct platform_device *pdev)
 
 static void acpi_hed_remove(struct platform_device *pdev)
 {
-	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 
-	acpi_dev_remove_notify_handler(device->handle, ACPI_DEVICE_NOTIFY,
+	acpi_dev_remove_notify_handler(adev->handle, ACPI_DEVICE_NOTIFY,
 				       acpi_hed_notify);
 	hed_handle = NULL;
 }

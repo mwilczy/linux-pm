@@ -631,7 +631,7 @@ static void acpi_sbs_callback(void *context)
 
 static int acpi_sbs_probe(struct platform_device *pdev)
 {
-	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 	struct acpi_sbs *sbs;
 	int result = 0;
 	int id;
@@ -645,8 +645,8 @@ static int acpi_sbs_probe(struct platform_device *pdev)
 	mutex_init(&sbs->lock);
 
 	sbs->hc = dev_get_drvdata(pdev->dev.parent);
-	strcpy(acpi_device_name(device), ACPI_SBS_DEVICE_NAME);
-	strcpy(acpi_device_class(device), ACPI_SBS_CLASS);
+	strcpy(acpi_device_name(adev), ACPI_SBS_DEVICE_NAME);
+	strcpy(acpi_device_class(adev), ACPI_SBS_CLASS);
 
 	sbs->dev = &pdev->dev;
 	platform_set_drvdata(pdev, sbs);

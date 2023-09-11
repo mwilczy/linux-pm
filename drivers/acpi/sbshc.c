@@ -244,19 +244,19 @@ extern int acpi_ec_add_query_handler(struct acpi_ec *ec, u8 query_bit,
 
 static int acpi_smbus_hc_probe(struct platform_device *pdev)
 {
-	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 	int status;
 	unsigned long long val;
 	struct acpi_smb_hc *hc;
 
-	status = acpi_evaluate_integer(device->handle, "_EC", NULL, &val);
+	status = acpi_evaluate_integer(adev->handle, "_EC", NULL, &val);
 	if (ACPI_FAILURE(status)) {
 		pr_err("error obtaining _EC.\n");
 		return -EIO;
 	}
 
-	strcpy(acpi_device_name(device), ACPI_SMB_HC_DEVICE_NAME);
-	strcpy(acpi_device_class(device), ACPI_SMB_HC_CLASS);
+	strcpy(acpi_device_name(adev), ACPI_SMB_HC_DEVICE_NAME);
+	strcpy(acpi_device_class(adev), ACPI_SMB_HC_CLASS);
 
 	hc = kzalloc(sizeof(struct acpi_smb_hc), GFP_KERNEL);
 	if (!hc)

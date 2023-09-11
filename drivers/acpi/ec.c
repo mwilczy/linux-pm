@@ -1619,15 +1619,15 @@ static int acpi_ec_setup(struct acpi_ec *ec, struct acpi_device *device, bool ca
 
 static int acpi_ec_probe(struct platform_device *pdev)
 {
-	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 	struct acpi_ec *ec;
 	int ret;
 
-	strcpy(acpi_device_name(device), ACPI_EC_DEVICE_NAME);
-	strcpy(acpi_device_class(device), ACPI_EC_CLASS);
+	strcpy(acpi_device_name(adev), ACPI_EC_DEVICE_NAME);
+	strcpy(acpi_device_class(adev), ACPI_EC_CLASS);
 
-	if (boot_ec && (boot_ec->handle == device->handle ||
-	    !strcmp(acpi_device_hid(device), ACPI_ECDT_HID))) {
+	if (boot_ec && (boot_ec->handle == adev->handle ||
+	    !strcmp(acpi_device_hid(adev), ACPI_ECDT_HID))) {
 		/* Fast path: this device corresponds to the boot EC. */
 		ec = boot_ec;
 	} else {
@@ -1637,7 +1637,7 @@ static int acpi_ec_probe(struct platform_device *pdev)
 		if (!ec)
 			return -ENOMEM;
 
-		status = ec_parse_device(device->handle, 0, ec, NULL);
+		status = ec_parse_device(adev->handle, 0, ec, NULL);
 		if (status != AE_CTRL_TERMINATE) {
 			ret = -EINVAL;
 			goto err;
@@ -1662,7 +1662,7 @@ static int acpi_ec_probe(struct platform_device *pdev)
 		}
 	}
 
-	ret = acpi_ec_setup(ec, device, true);
+	ret = acpi_ec_setup(ec, adev, true);
 	if (ret)
 		goto err;
 
@@ -1682,7 +1682,7 @@ static int acpi_ec_probe(struct platform_device *pdev)
 	WARN(!ret, "Could not request EC cmd io port 0x%lx", ec->command_addr);
 
 	/* Reprobe devices depending on the EC */
-	acpi_dev_clear_dependencies(device);
+	acpi_dev_clear_dependencies(adev);
 
 	acpi_handle_debug(ec->handle, "enumerated.\n");
 	return 0;

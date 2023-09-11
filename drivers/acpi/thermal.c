@@ -439,7 +439,7 @@ static void acpi_queue_thermal_check(struct acpi_thermal *tz)
 
 static void acpi_thermal_trips_update(struct acpi_thermal *tz, u32 event)
 {
-	struct acpi_device *device = ACPI_COMPANION(tz->dev);
+	struct acpi_device *adev = ACPI_COMPANION(tz->dev);
 
 	/*
 	 * Use thermal_zone_device_exec() to carry out the trip points
@@ -451,7 +451,7 @@ static void acpi_thermal_trips_update(struct acpi_thermal *tz, u32 event)
 	thermal_zone_device_exec(tz->thermal_zone,
 				 acpi_thermal_adjust_thermal_zone, event);
 	acpi_queue_thermal_check(tz);
-	acpi_bus_generate_netlink_event(device->pnp.device_class,
+	acpi_bus_generate_netlink_event(adev->pnp.device_class,
 					dev_name(tz->dev), event, 0);
 }
 
@@ -544,9 +544,9 @@ static int thermal_get_trend(struct thermal_zone_device *thermal,
 static void acpi_thermal_zone_device_hot(struct thermal_zone_device *thermal)
 {
 	struct acpi_thermal *tz = thermal_zone_device_priv(thermal);
-	struct acpi_device *device = ACPI_COMPANION(tz->dev);
+	struct acpi_device *adev = ACPI_COMPANION(tz->dev);
 
-	acpi_bus_generate_netlink_event(device->pnp.device_class,
+	acpi_bus_generate_netlink_event(adev->pnp.device_class,
 					dev_name(tz->dev),
 					ACPI_THERMAL_NOTIFY_HOT, 1);
 }
@@ -554,9 +554,9 @@ static void acpi_thermal_zone_device_hot(struct thermal_zone_device *thermal)
 static void acpi_thermal_zone_device_critical(struct thermal_zone_device *thermal)
 {
 	struct acpi_thermal *tz = thermal_zone_device_priv(thermal);
-	struct acpi_device *device = ACPI_COMPANION(tz->dev);
+	struct acpi_device *adev = ACPI_COMPANION(tz->dev);
 
-	acpi_bus_generate_netlink_event(device->pnp.device_class,
+	acpi_bus_generate_netlink_event(adev->pnp.device_class,
 					dev_name(tz->dev),
 					ACPI_THERMAL_NOTIFY_CRITICAL, 1);
 
@@ -567,7 +567,7 @@ static int acpi_thermal_cooling_device_cb(struct thermal_zone_device *thermal,
 					  struct thermal_cooling_device *cdev,
 					  bool bind)
 {
-	struct acpi_device *device = cdev->devdata;
+	struct acpi_device *adev = cdev->devdata;
 	struct acpi_thermal *tz = thermal_zone_device_priv(thermal);
 	struct acpi_device *dev;
 	acpi_handle handle;
@@ -587,7 +587,7 @@ static int acpi_thermal_cooling_device_cb(struct thermal_zone_device *thermal,
 		for (i = 0; i < tz->trips.passive.devices.count; i++) {
 			handle = tz->trips.passive.devices.handles[i];
 			dev = acpi_fetch_acpi_dev(handle);
-			if (dev != device)
+			if (dev != adev)
 				continue;
 
 			if (bind)
@@ -614,7 +614,7 @@ static int acpi_thermal_cooling_device_cb(struct thermal_zone_device *thermal,
 		for (j = 0; j < tz->trips.active[i].devices.count; j++) {
 			handle = tz->trips.active[i].devices.handles[j];
 			dev = acpi_fetch_acpi_dev(handle);
-			if (dev != device)
+			if (dev != adev)
 				continue;
 
 			if (bind)
@@ -925,7 +925,7 @@ static void acpi_thermal_check_fn(struct work_struct *work)
 
 static int acpi_thermal_probe(struct platform_device *pdev)
 {
-	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 	struct acpi_thermal *tz;
 	int result;
 
@@ -934,9 +934,9 @@ static int acpi_thermal_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	tz->dev = &pdev->dev;
-	strcpy(tz->name, device->pnp.bus_id);
-	strcpy(acpi_device_name(device), ACPI_THERMAL_DEVICE_NAME);
-	strcpy(acpi_device_class(device), ACPI_THERMAL_CLASS);
+	strcpy(tz->name, adev->pnp.bus_id);
+	strcpy(acpi_device_name(adev), ACPI_THERMAL_DEVICE_NAME);
+	strcpy(acpi_device_class(adev), ACPI_THERMAL_CLASS);
 
 	platform_set_drvdata(pdev, tz);
 
@@ -954,10 +954,10 @@ static int acpi_thermal_probe(struct platform_device *pdev)
 	mutex_init(&tz->thermal_check_lock);
 	INIT_WORK(&tz->thermal_check_work, acpi_thermal_check_fn);
 
-	pr_info("%s [%s] (%ld C)\n", acpi_device_name(device),
-		acpi_device_bid(device), deci_kelvin_to_celsius(tz->temperature));
+	pr_info("%s [%s] (%ld C)\n", acpi_device_name(adev),
+		acpi_device_bid(adev), deci_kelvin_to_celsius(tz->temperature));
 
-	result = acpi_dev_install_notify_handler(device->handle, ACPI_DEVICE_NOTIFY,
+	result = acpi_dev_install_notify_handler(adev->handle, ACPI_DEVICE_NOTIFY,
 						 acpi_thermal_notify, tz);
 	if (result)
 		goto flush_wq;

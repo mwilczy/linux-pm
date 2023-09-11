@@ -38,15 +38,15 @@ static u32 acpi_tiny_power_button_event(void *not_used)
 
 static int acpi_tiny_power_button_probe(struct platform_device *pdev)
 {
-	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 	acpi_status status;
 
-	if (device->device_type == ACPI_BUS_TYPE_POWER_BUTTON) {
+	if (adev->device_type == ACPI_BUS_TYPE_POWER_BUTTON) {
 		status = acpi_install_fixed_event_handler(ACPI_EVENT_POWER_BUTTON,
 							  acpi_tiny_power_button_event,
 							  NULL);
 	} else {
-		status = acpi_install_notify_handler(device->handle,
+		status = acpi_install_notify_handler(adev->handle,
 						     ACPI_DEVICE_NOTIFY,
 						     acpi_tiny_power_button_notify,
 						     NULL);
@@ -59,13 +59,13 @@ static int acpi_tiny_power_button_probe(struct platform_device *pdev)
 
 static void acpi_tiny_power_button_remove(struct platform_device *pdev)
 {
-	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 
-	if (device->device_type == ACPI_BUS_TYPE_POWER_BUTTON) {
+	if (adev->device_type == ACPI_BUS_TYPE_POWER_BUTTON) {
 		acpi_remove_fixed_event_handler(ACPI_EVENT_POWER_BUTTON,
 						acpi_tiny_power_button_event);
 	} else {
-		acpi_remove_notify_handler(device->handle, ACPI_DEVICE_NOTIFY,
+		acpi_remove_notify_handler(adev->handle, ACPI_DEVICE_NOTIFY,
 					   acpi_tiny_power_button_notify);
 	}
 	acpi_os_wait_events_complete();

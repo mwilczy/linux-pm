@@ -1189,11 +1189,11 @@ static int acpi_battery_update_retry(struct acpi_battery *battery)
 
 static int acpi_battery_probe(struct platform_device *pdev)
 {
-	struct acpi_device *device = ACPI_COMPANION(&pdev->dev);
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 	struct acpi_battery *battery;
 	int result;
 
-	if (device->dep_unmet)
+	if (adev->dep_unmet)
 		return -EPROBE_DEFER;
 
 	battery = kzalloc(sizeof(struct acpi_battery), GFP_KERNEL);
@@ -1201,29 +1201,29 @@ static int acpi_battery_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	battery->dev = &pdev->dev;
-	strcpy(acpi_device_name(device), ACPI_BATTERY_DEVICE_NAME);
-	strcpy(acpi_device_class(device), ACPI_BATTERY_CLASS);
+	strcpy(acpi_device_name(adev), ACPI_BATTERY_DEVICE_NAME);
+	strcpy(acpi_device_class(adev), ACPI_BATTERY_CLASS);
 
 	platform_set_drvdata(pdev, battery);
 
 	mutex_init(&battery->lock);
 	mutex_init(&battery->sysfs_lock);
-	if (acpi_has_method(device->handle, "_BIX"))
+	if (acpi_has_method(adev->handle, "_BIX"))
 		set_bit(ACPI_BATTERY_XINFO_PRESENT, &battery->flags);
 
 	result = acpi_battery_update_retry(battery);
 	if (result)
 		goto fail;
 
-	pr_info("Slot [%s] (battery %s)\n", acpi_device_bid(device),
-		device->status.battery_present ? "present" : "absent");
+	pr_info("Slot [%s] (battery %s)\n", acpi_device_bid(adev),
+		adev->status.battery_present ? "present" : "absent");
 
 	battery->pm_nb.notifier_call = battery_notify;
 	register_pm_notifier(&battery->pm_nb);
 
 	device_init_wakeup(&pdev->dev, 1);
 
-	result = acpi_dev_install_notify_handler(device->handle, ACPI_ALL_NOTIFY,
+	result = acpi_dev_install_notify_handler(adev->handle, ACPI_ALL_NOTIFY,
 						 acpi_battery_notify, battery);
 	if (result)
 		goto fail_pm;
